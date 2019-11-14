@@ -9,6 +9,8 @@
 #include <cstring>
 #include <ctgmath>
 
+#include "noise.h"
+
 namespace fluid {
   using namespace std;
 
@@ -324,44 +326,42 @@ namespace fluid {
       }
     }
 
-    void boundary2f(float *p, float *u, int m, int n) {
+    void left_boundary2f(float *p, float *u, int m, int n) {
       for (int j = 1; j < n - 1; j++) {
-        // left boundary
-        {
-          p[at(m, 0, j)] = p[at(m, 0 + 1, j)];
-          u[at2_x(m, 0, j)] = -u[at2_x(m, 0 + 1, j)];
-          u[at2_y(m, 0, j)] = -u[at2_y(m, 0 + 1, j)];
-        }
-
-        // right boundary
-        {
-          p[at(m, m - 1, j)] = p[at(m, m - 1 - 1, j)];
-          u[at2_x(m, m - 1, j)] = -u[at2_x(m, m - 1 - 1, j)];
-          u[at2_y(m, m - 1, j)] = -u[at2_y(m, m - 1 - 1, j)];
-        }
+        p[at(m, 0, j)] = p[at(m, 0 + 1, j)];
+        u[at2_x(m, 0, j)] = -u[at2_x(m, 0 + 1, j)];
+        u[at2_y(m, 0, j)] = -u[at2_y(m, 0 + 1, j)];
       }
+    }
 
+    void right_boundary2f(float *p, float *u, int m, int n) {
+      for (int j = 1; j < n - 1; j++) {
+        p[at(m, m - 1, j)] = p[at(m, m - 1 - 1, j)];
+        u[at2_x(m, m - 1, j)] = -u[at2_x(m, m - 1 - 1, j)];
+        u[at2_y(m, m - 1, j)] = -u[at2_y(m, m - 1 - 1, j)];
+      }
+    }
+
+    void bottom_boundary2f(float *p, float *u, int m, int n) {
       for (int i = 1; i < m - 1; i++) {
-        // bottom boundary
-        {
-          p[at(m, i, 0)] = p[at(m, i, 0 + 1)];
-          u[at2_x(m, i, 0)] = -u[at2_x(m, i, 0 + 1)];
-          u[at2_y(m, i, 0)] = -u[at2_y(m, i, 0 + 1)];
-        }
+        p[at(m, i, 0)] = p[at(m, i, 0 + 1)];
+        u[at2_x(m, i, 0)] = -u[at2_x(m, i, 0 + 1)];
+        u[at2_y(m, i, 0)] = -u[at2_y(m, i, 0 + 1)];
+      }
+    }
 
-        // top boundary
-        {
-          p[at(m, i, n - 1)] = p[at(m, i, n - 1 - 1)];
-          u[at2_x(m, i, n - 1)] = -u[at2_x(m, i, n - 1 - 1)];
-          u[at2_y(m, i, n - 1)] = -u[at2_y(m, i, n - 1 - 1)];
-        }
+    void top_boundary2f(float *p, float *u, int m, int n) {
+      for (int i = 1; i < m - 1; i++) {
+        p[at(m, i, n - 1)] = p[at(m, i, n - 1 - 1)];
+        u[at2_x(m, i, n - 1)] = -u[at2_x(m, i, n - 1 - 1)];
+        u[at2_y(m, i, n - 1)] = -u[at2_y(m, i, n - 1 - 1)];
       }
     }
   }
 
   class Fluid {
   protected:
-    int _u_m{}, _u_n{};
+    int _m{}, _n{};
 
     float _dt{}, _dx{}, _v{};
 
@@ -375,8 +375,8 @@ namespace fluid {
     Fluid() = default;
 
     Fluid(int m, int n, float dt, float dx, float v) {
-      _u_m = m;
-      _u_n = n;
+      _m = m;
+      _n = n;
 
       _dt = dt;
       _dx = dx;
@@ -401,7 +401,7 @@ namespace fluid {
     }
 
     void advect_velocity() {
-      util::advect2f(_u, _w, _u, _dt, _dx, _u_m, _u_n);
+      util::advect2f(_u, _w, _u, _dt, _dx, _m, _n);
     }
 
     void diffuse(int n_jacob) {
@@ -409,33 +409,80 @@ namespace fluid {
       float r_b = 1.0f / (4 + a);
 
       for (int i = 0; i < n_jacob; i++) {
-        util::jacobi2f(_w, _w_tmp, _w, a, r_b, _u_m, _u_n);
-        memcpy(_w, _w_tmp, _u_m * _u_n * 2 * sizeof(float));
+        util::jacobi2f(_w, _w_tmp, _w, a, r_b, _m, _n);
+        memcpy(_w, _w_tmp, _m * _n * 2 * sizeof(float));
       }
     }
 
     void add_force(float pos[2], float f[2], float r) {
-      util::brush2f(_w, pos, f, r, _dt, _u_m, _u_n);
+      util::brush2f(_w, pos, f, r, _dt, _m, _n);
     }
 
     void projection(int n_jacob) {
       float a = - (float) pow(_dx, 2);
       float r_b = 1.0f / 4;
 
-      util::divergence2f(_w, _w_div, _dx, _u_m, _u_n);
+      util::divergence2f(_w, _w_div, _dx, _m, _n);
 
       for (int i = 0; i < n_jacob; i++) {
-        util::jacobi1f(_p, _p_tmp, _w_div, a, r_b, _u_m, _u_n);
-        memcpy(_p, _p_tmp, _u_m * _u_n * 1 * sizeof(float));
+        util::jacobi1f(_p, _p_tmp, _w_div, a, r_b, _m, _n);
+        memcpy(_p, _p_tmp, _m * _n * 1 * sizeof(float));
       }
 
-      util::gradient2f(_p, _w, _u, _dx, _u_m, _u_n);
+      util::gradient2f(_p, _w, _u, _dx, _m, _n);
+    }
+
+    void left_boundary() {
+      util::left_boundary2f(_p, _u, _m, _n);
+    }
+
+    void right_boundary() {
+      util::right_boundary2f(_p, _u, _m, _n);
+    }
+
+    void bottom_boundary() {
+      util::bottom_boundary2f(_p, _u, _m, _n);
+    }
+
+    void top_boundary() {
+      util::top_boundary2f(_p, _u, _m, _n);
     }
 
     void boundary() {
-      util::boundary2f(_p, _u, _u_m, _u_n);
+      left_boundary(); right_boundary();
+      bottom_boundary(); top_boundary();
     }
+
+    static void accelerate_by_single_vector(Fluid &f, float v[2]);
+
+    static void accelerate_by_perlin_noise(Fluid &f, int x_seed = 0, int y_seed = 1,
+                                           float amplitude = 1, float scale = 0.01f);
   };
+
+  void Fluid::accelerate_by_single_vector(Fluid &f, float v[2]) {
+    for (int j = 1; j < f._n; j++) {
+      for (int i = 1; i < f._m; i++) {
+        f._u[util::at2_x(f._m, i, j)] += v[0];
+        f._u[util::at2_y(f._m, i, j)] += v[1];
+      }
+    }
+  }
+
+  void Fluid::accelerate_by_perlin_noise(Fluid &f, int x_seed, int y_seed,
+                                         float amplitude, float scale) {
+    noise::OctavePerlinNoise x_noise(x_seed);
+    noise::OctavePerlinNoise y_noise(y_seed);
+
+    for (int j = 1; j < f._n; j++) {
+      for (int i = 1; i < f._m; i++) {
+        float x_n = x_noise(i * scale, j * scale);
+        float y_n = y_noise(i * scale, j * scale);
+
+        f._u[util::at2_x(f._m, i, j)] += (x_n * 2 - 1) * amplitude;
+        f._u[util::at2_y(f._m, i, j)] += (y_n * 2 - 1) * amplitude;
+      }
+    }
+  }
 }
 
 #endif //FLUID_SIM_FLUID_H

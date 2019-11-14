@@ -8,7 +8,7 @@
 #include <GL/glut.h>
 #include <memory>
 
-// #include "lib/ink_fluid"
+#include "lib/ink_fluid.h"
 #include "lib/map_fluid.h"
 
 class Timer {
@@ -35,6 +35,7 @@ public:
 // setting
 int width, height;
 float scale_x, scale_y;
+float noise_amplitude = 0;
 int simulation_mode = -1;
 bool save_enable = false;
 
@@ -116,11 +117,11 @@ void display() {
   sim->boundary();
 
   if (simulation_mode == MAP_FLUID_MODE) {
-    std::dynamic_pointer_cast<fluid::MapFluid>(sim)->advect_img();
+    std::dynamic_pointer_cast<fluid::MapFluid>(sim)->advect_map();
     std::dynamic_pointer_cast<fluid::MapFluid>(sim)->mapping(src_img.get_pixbuf(), dst_img->get_pixbuf());
   } else if (simulation_mode == INK_FLUID_MODE) {
-    std::dynamic_pointer_cast<fluid::MapFluid>(sim)->advect_img();
-    std::dynamic_pointer_cast<fluid::MapFluid>(sim)->mapping(src_img.get_pixbuf(), dst_img->get_pixbuf());
+    std::dynamic_pointer_cast<fluid::InkFluid>(sim)->advect_ink();
+    std::dynamic_pointer_cast<fluid::InkFluid>(sim)->get_ink(dst_img->get_pixbuf());
   }
 
   sim_timer.stop("SIM AMOUNT OF TIME:");
@@ -173,7 +174,6 @@ int main(int argc, char **argv) {
   getline(std::cin, filename_input);
   if (filename_input.empty()) filename_input = "text";
   src_img.read(filename_input + ".png");
-  //src_img.resize(width, height);
 
   // init destination image
   dst_img = std::make_shared<png::solid_image<png::rgb_pixel>>(width, height);
@@ -193,9 +193,38 @@ int main(int argc, char **argv) {
     simulation_mode = INK_FLUID_MODE;
 
     // init simulator
+    sim = std::make_shared<fluid::InkFluid>(width, height, scale_x, scale_y, 0.03f, 1.0f, 0.0001f);
+
+    // init ink from image
+    std::string ink_from_image_input;
+    std::cout << "If you want init ink from source image, press 'Y' key. (Default: disable)" << std::endl << ">> ";
+    getline(std::cin, ink_from_image_input);
+    if (ink_from_image_input[0] == 'Y' || ink_from_image_input[0] == 'y') {
+      std::dynamic_pointer_cast<fluid::InkFluid>(sim)->set_ink(src_img.get_pixbuf());
+    }
   } else {
     return -1;
   }
+
+  // set perlin noise amplitude
+  std::string noise_amplitude_input;
+  std::cout << "Please enter noise_amplitude. (Default: 10)" << std::endl << ">> ";
+  getline(std::cin, noise_amplitude_input);
+  noise_amplitude = noise_amplitude_input.empty() ? 10 : std::stof(noise_amplitude_input);
+  std::cout << "Noise Amplitude is " << noise_amplitude << std::endl;
+  fluid::Fluid::accelerate_by_perlin_noise(*sim, 0, 1, noise_amplitude);
+
+  // set fluid velocity
+  std::string vel_x_input, vel_y_input;
+  float vel[2];
+  std::cout << "Please enter vel_x. (Default: 0)" << std::endl << ">> ";
+  getline(std::cin, vel_x_input);
+  vel[0] = vel_x_input.empty() ? 0 : std::stoi(vel_x_input);
+  std::cout << "Please enter vel_y. (Default: 0)" << std::endl << ">> ";
+  getline(std::cin, vel_y_input);
+  vel[1] = vel_y_input.empty() ? 0 : std::stoi(vel_y_input);
+  std::cout << "Velocity: vel_x x vel_y = " << vel[0] << " x " << vel[1] << std::endl;
+  fluid::Fluid::accelerate_by_single_vector(*sim, vel);
 
   // initialize OpenGL
   glutInit(&argc, argv);

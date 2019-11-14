@@ -45,8 +45,8 @@ namespace fluid {
       delete[] _map_tmp;
     }
 
-    void advect_img() {
-      util::advect_scaled2f(_map, _map_tmp, _u, _dt, _dx, _width, _height, _u_m, _u_n);
+    void advect_map() {
+      util::advect_scaled2f(_map, _map_tmp, _u, _dt, _dx, _width, _height, _m, _n);
       memcpy(_map, _map_tmp, _width * _height * 2 * sizeof(float));
     }
 
