@@ -6,7 +6,6 @@
 #ifndef FLUID_SIM_FLUID_H
 #define FLUID_SIM_FLUID_H
 
-#include <cstring>
 #include <ctgmath>
 
 #include "noise.h"
@@ -38,42 +37,45 @@ namespace fluid {
       float scale_m = (float) q_m / (float) u_m;
       float scale_n = (float) q_n / (float) u_n;
 
-      for (int j = 0; j < q_n; j++) {
-        int u_j = (int) ((float) j / scale_n);
+      for (int u_j = 0; u_j < u_n; u_j++) {
+        for (int u_i = 0; u_i < u_m; u_i++) {
+          float du_x = -u[at2_x(u_m, u_i, u_j)] * dt * dx;
+          float du_y = -u[at2_y(u_m, u_i, u_j)] * dt * dx;
 
-        for (int i = 0; i < q_m; i++) {
-          int u_i = (int) ((float) i / scale_m);
+          int du_i = (int) floor(du_x);
+          int du_j = (int) floor(du_y);
 
-          float x = i - dt * dx * u[at2_x(u_m, u_i, u_j)];
-          float y = j - dt * dx * u[at2_y(u_m, u_i, u_j)];
+          float dec_x = du_x - du_i;
+          float dec_y = du_y - du_j;
 
-          // clip
-          if (x < 0) {
-            x = 0.5f;
-          } else if (x >= q_m - 1) {
-            x = q_m - 1 - 0.5f;
+          for (int j = u_j * scale_n; j < (u_j + 1) * scale_n; j++) {
+            int q_j = std::max(0, std::min(j + du_j, q_n - 2));
+
+            for (int i = u_i * scale_m; i < (u_i + 1) * scale_m; i++) {
+              int q_i = std::max(0, std::min(i + du_i, q_m - 2));
+
+              float q00_x = q[at2_x(q_m, q_i + 0, q_j + 0)];
+              float q00_y = q[at2_y(q_m, q_i + 0, q_j + 0)];
+
+              float q01_x = q[at2_x(q_m, q_i + 0, q_j + 1)];
+              float q01_y = q[at2_y(q_m, q_i + 0, q_j + 1)];
+
+              float q10_x = q[at2_x(q_m, q_i + 1, q_j + 0)];
+              float q10_y = q[at2_y(q_m, q_i + 1, q_j + 0)];
+
+              float q11_x = q[at2_x(q_m, q_i + 1, q_j + 1)];
+              float q11_y = q[at2_y(q_m, q_i + 1, q_j + 1)];
+
+              float q0_x = lerp(q00_x, q10_x, dec_x);
+              float q0_y = lerp(q00_y, q10_y, dec_x);
+
+              float q1_x = lerp(q01_x, q11_x, dec_x);
+              float q1_y = lerp(q01_y, q11_y, dec_x);
+
+              q_new[at2_x(q_m, i, j)] = lerp(q0_x, q1_x, dec_y);
+              q_new[at2_y(q_m, i, j)] = lerp(q0_y, q1_y, dec_y);
+            }
           }
-
-          if (y < 0) {
-            y = 0.5f;
-          } else if (y >= q_n - 1) {
-            y = q_n - 1 - 0.5f;
-          }
-
-          auto q_i = (int) floor(x);
-          auto q_j = (int) floor(y);
-
-          float dec_x = x - floor(x);
-          float dec_y = y - floor(y);
-
-          float q0_x = lerp(q[at2_x(q_m, q_i + 0, q_j + 0)], q[at2_x(q_m, q_i + 1, q_j + 0)], dec_x);
-          float q0_y = lerp(q[at2_y(q_m, q_i + 0, q_j + 0)], q[at2_y(q_m, q_i + 1, q_j + 0)], dec_x);
-
-          float q1_x = lerp(q[at2_x(q_m, q_i + 0, q_j + 1)], q[at2_x(q_m, q_i + 1, q_j + 1)], dec_x);
-          float q1_y = lerp(q[at2_y(q_m, q_i + 0, q_j + 1)], q[at2_y(q_m, q_i + 1, q_j + 1)], dec_x);
-
-          q_new[at2_x(q_m, i, j)] = lerp(q0_x, q1_x, dec_y);
-          q_new[at2_y(q_m, i, j)] = lerp(q0_y, q1_y, dec_y);
         }
       }
     }
@@ -82,34 +84,35 @@ namespace fluid {
                   float dt, float dx, int m, int n) {
       for (int j = 0; j < n; j++) {
         for (int i = 0; i < m; i++) {
-          float x = i - dt * dx * u[at2_x(m, i, j)];
-          float y = j - dt * dx * u[at2_y(m, i, j)];
+          float x = i - u[at2_x(m, i, j)] * dt * dx;
+          float y = j - u[at2_y(m, i, j)] * dt * dx;
 
-          // clip
-          if (x < 0) {
-            x = 0.5f;
-          } else if (x >= m - 1) {
-            x = m - 1 - 0.5f;
-          }
+          int q_i = (int) floor(x);
+          int q_j = (int) floor(y);
 
-          if (y < 0) {
-            y = 0.5f;
-          } else if (y >= n - 1) {
-            y = n - 1 - 0.5f;
-          }
+          float dec_x = x - q_i;
+          float dec_y = y - q_j;
 
-          // rectangle index
-          auto q_i = (int) floor(x);
-          auto q_j = (int) floor(y);
+          q_i = std::max(0, std::min(q_i, m - 2));
+          q_j = std::max(0, std::min(q_j, n - 2));
 
-          float dec_x = x - floor(x);
-          float dec_y = y - floor(y);
+          float q00_x = q[at2_x(m, q_i + 0, q_j + 0)];
+          float q00_y = q[at2_y(m, q_i + 0, q_j + 0)];
 
-          float q0_x = lerp(q[at2_x(m, q_i + 0, q_j + 0)], q[at2_x(m, q_i + 1, q_j + 0)], dec_x);
-          float q0_y = lerp(q[at2_y(m, q_i + 0, q_j + 0)], q[at2_y(m, q_i + 1, q_j + 0)], dec_x);
+          float q01_x = q[at2_x(m, q_i + 0, q_j + 1)];
+          float q01_y = q[at2_y(m, q_i + 0, q_j + 1)];
 
-          float q1_x = lerp(q[at2_x(m, q_i + 0, q_j + 1)], q[at2_x(m, q_i + 1, q_j + 1)], dec_x);
-          float q1_y = lerp(q[at2_y(m, q_i + 0, q_j + 1)], q[at2_y(m, q_i + 1, q_j + 1)], dec_x);
+          float q10_x = q[at2_x(m, q_i + 1, q_j + 0)];
+          float q10_y = q[at2_y(m, q_i + 1, q_j + 0)];
+
+          float q11_x = q[at2_x(m, q_i + 1, q_j + 1)];
+          float q11_y = q[at2_y(m, q_i + 1, q_j + 1)];
+
+          float q0_x = lerp(q00_x, q10_x, dec_x);
+          float q0_y = lerp(q00_y, q10_y, dec_x);
+
+          float q1_x = lerp(q01_x, q11_x, dec_x);
+          float q1_y = lerp(q01_y, q11_y, dec_x);
 
           q_new[at2_x(m, i, j)] = lerp(q0_x, q1_x, dec_y);
           q_new[at2_y(m, i, j)] = lerp(q0_y, q1_y, dec_y);
@@ -122,56 +125,91 @@ namespace fluid {
       // inner of boundary
       for (int j = 1; j < n - 1; j++) {
         for (int i = 1; i < m - 1; i++) {
-          x_new[at2_x(m, i, j)] = (x[at2_x(m, i - 1, j)] + x[at2_x(m, i + 1, j)] +
-                                   x[at2_x(m, i, j - 1)] + x[at2_x(m, i, j + 1)] +
-                                   b[at2_x(m, i, j)] * a) * r_b;
-          x_new[at2_y(m, i, j)] = (x[at2_y(m, i - 1, j)] + x[at2_y(m, i + 1, j)] +
-                                   x[at2_y(m, i, j - 1)] + x[at2_y(m, i, j + 1)] +
-                                   b[at2_y(m, i, j)] * a) * r_b;
+          float x00_x = x[at2_x(m, i, j - 1)];
+          float x00_y = x[at2_y(m, i, j - 1)];
+          float x01_x = x[at2_x(m, i, j + 1)];
+          float x01_y = x[at2_y(m, i, j + 1)];
+          float x10_x = x[at2_x(m, i - 1, j)];
+          float x10_y = x[at2_y(m, i - 1, j)];
+          float x11_x = x[at2_x(m, i + 1, j)];
+          float x11_y = x[at2_y(m, i + 1, j)];
+          float b_x_a = b[at2_x(m, i, j)] * a;
+          float b_y_a = b[at2_y(m, i, j)] * a;
+
+          x_new[at2_x(m, i, j)] = (x00_x + x01_x + x10_x + x11_x + b_x_a) * r_b;
+          x_new[at2_y(m, i, j)] = (x00_y + x01_y + x10_y + x11_y + b_y_a) * r_b;
         }
       }
 
       for (int j = 1; j < n - 1; j++) {
         // left boundary
         {
-          x_new[at2_x(m, 0, j)] = (x[at2_x(m, 0 - 0, j)] + x[at2_x(m, 0 + 1, j)] +
-                                   x[at2_x(m, 0, j - 1)] + x[at2_x(m, 0, j + 1)] +
-                                   b[at2_x(m, 0, j)] * a) * r_b;
-          x_new[at2_y(m, 0, j)] = (x[at2_y(m, 0 - 0, j)] + x[at2_y(m, 0 + 1, j)] +
-                                   x[at2_y(m, 0, j - 1)] + x[at2_y(m, 0, j + 1)] +
-                                   b[at2_y(m, 0, j)] * a) * r_b;
+          float x00_x = x[at2_x(m, 0, j - 1)];
+          float x00_y = x[at2_y(m, 0, j - 1)];
+          float x01_x = x[at2_x(m, 0, j + 1)];
+          float x01_y = x[at2_y(m, 0, j + 1)];
+          float x10_x = x[at2_x(m, 0 - 0, j)];
+          float x10_y = x[at2_y(m, 0 - 0, j)];
+          float x11_x = x[at2_x(m, 0 + 1, j)];
+          float x11_y = x[at2_y(m, 0 + 1, j)];
+          float b_x_a = b[at2_x(m, 0, j)] * a;
+          float b_y_a = b[at2_y(m, 0, j)] * a;
+
+          x_new[at2_x(m, 0, j)] = (x00_x + x01_x + x10_x + x11_x + b_x_a) * r_b;
+          x_new[at2_y(m, 0, j)] = (x00_y + x01_y + x10_y + x11_y + b_y_a) * r_b;
         }
 
         // right boundary
         {
-          x_new[at2_x(m, m - 1, j)] = (x[at2_x(m, m - 1 - 1, j)] + x[at2_x(m, m - 1 + 0, j)] +
-                                       x[at2_x(m, m - 1, j - 1)] + x[at2_x(m, m - 1, j + 1)] +
-                                       b[at2_x(m, m - 1, j)] * a) * r_b;
-          x_new[at2_y(m, m - 1, j)] = (x[at2_y(m, m - 1 - 1, j)] + x[at2_y(m, m - 1 + 0, j)] +
-                                       x[at2_y(m, m - 1, j - 1)] + x[at2_y(m, m - 1, j + 1)] +
-                                       b[at2_y(m, m - 1, j)] * a) * r_b;
+          float x00_x = x[at2_x(m, m - 1, j - 1)];
+          float x00_y = x[at2_y(m, m - 1, j - 1)];
+          float x01_x = x[at2_x(m, m - 1, j + 1)];
+          float x01_y = x[at2_y(m, m - 1, j + 1)];
+          float x10_x = x[at2_x(m, m - 1 - 1, j)];
+          float x10_y = x[at2_y(m, m - 1 - 1, j)];
+          float x11_x = x[at2_x(m, m - 1 + 0, j)];
+          float x11_y = x[at2_y(m, m - 1 + 0, j)];
+          float b_x_a = b[at2_x(m, m - 1, j)] * a;
+          float b_y_a = b[at2_y(m, m - 1, j)] * a;
+
+          x_new[at2_x(m, m - 1, j)] = (x00_x + x01_x + x10_x + x11_x + b_x_a) * r_b;
+          x_new[at2_y(m, m - 1, j)] = (x00_y + x01_y + x10_y + x11_y + b_y_a) * r_b;
         }
       }
 
       for (int i = 1; i < m - 1; i++) {
         // bottom boundary
         {
-          x_new[at2_x(m, i, 0)] = (x[at2_x(m, i - 1, 0)] + x[at2_x(m, i + 1, 0)] +
-                                   x[at2_x(m, i, 0 - 0)] + x[at2_x(m, i, 0 + 1)] +
-                                   b[at2_x(m, i, 0)] * a) * r_b;
-          x_new[at2_y(m, i, 0)] = (x[at2_y(m, i - 1, 0)] + x[at2_y(m, i + 1, 0)] +
-                                   x[at2_y(m, i, 0 - 0)] + x[at2_y(m, i, 0 + 1)] +
-                                   b[at2_y(m, i, 0)] * a) * r_b;
+          float x00_x = x[at2_x(m, i, 0 - 0)];
+          float x00_y = x[at2_y(m, i, 0 - 0)];
+          float x01_x = x[at2_x(m, i, 0 + 1)];
+          float x01_y = x[at2_y(m, i, 0 + 1)];
+          float x10_x = x[at2_x(m, i - 1, 0)];
+          float x10_y = x[at2_y(m, i - 1, 0)];
+          float x11_x = x[at2_x(m, i + 1, 0)];
+          float x11_y = x[at2_y(m, i + 1, 0)];
+          float b_x_a = b[at2_x(m, i, 0)] * a;
+          float b_y_a = b[at2_y(m, i, 0)] * a;
+
+          x_new[at2_x(m, i, 0)] = (x00_x + x01_x + x10_x + x11_x + b_x_a) * r_b;
+          x_new[at2_y(m, i, 0)] = (x00_y + x01_y + x10_y + x11_y + b_y_a) * r_b;
         }
 
         // top boundary
         {
-          x_new[at2_x(m, i, n - 1)] = (x[at2_x(m, i - 1, n - 1)] + x[at2_x(m, i + 1, n - 1)] +
-                                       x[at2_x(m, i, n - 1 - 1)] + x[at2_x(m, i, n - 1 + 0)] +
-                                       b[at2_x(m, i, n - 1)] * a) * r_b;
-          x_new[at2_y(m, i, n - 1)] = (x[at2_y(m, i - 1, n - 1)] + x[at2_y(m, i + 1, n - 1)] +
-                                       x[at2_y(m, i, n - 1 - 1)] + x[at2_y(m, i, n - 1 + 0)] +
-                                       b[at2_y(m, i, n - 1)] * a) * r_b;
+          float x00_x = x[at2_x(m, i, n - 1 - 1)];
+          float x00_y = x[at2_y(m, i, n - 1 - 1)];
+          float x01_x = x[at2_x(m, i, n - 1 + 0)];
+          float x01_y = x[at2_y(m, i, n - 1 + 0)];
+          float x10_x = x[at2_x(m, i - 1, n - 1)];
+          float x10_y = x[at2_y(m, i - 1, n - 1)];
+          float x11_x = x[at2_x(m, i + 1, n - 1)];
+          float x11_y = x[at2_y(m, i + 1, n - 1)];
+          float b_x_a = b[at2_x(m, i, n - 1)] * a;
+          float b_y_a = b[at2_y(m, i, n - 1)] * a;
+
+          x_new[at2_x(m, i, n - 1)] = (x00_x + x01_x + x10_x + x11_x + b_x_a) * r_b;
+          x_new[at2_y(m, i, n - 1)] = (x00_y + x01_y + x10_y + x11_y + b_y_a) * r_b;
         }
       }
     }
@@ -181,41 +219,61 @@ namespace fluid {
       // inner of boundary
       for (int j = 1; j < n - 1; j++) {
         for (int i = 1; i < m - 1; i++) {
-          x_new[at(m, i, j)] = (x[at(m, i - 1, j)] + x[at(m, i + 1, j)] +
-                                x[at(m, i, j - 1)] + x[at(m, i, j + 1)] +
-                                b[at(m, i, j)] * a) * r_b;
+          float x00 = x[at(m, i, j - 1)];
+          float x01 = x[at(m, i, j + 1)];
+          float x10 = x[at(m, i - 1, j)];
+          float x11 = x[at(m, i + 1, j)];
+          float b_a = b[at(m, i, j)] * a;
+
+          x_new[at(m, i, j)] = (x00 + x01 + x10 + x11 + b_a) * r_b;
         }
       }
 
       for (int j = 1; j < n - 1; j++) {
         // left boundary
         {
-          x_new[at(m, 0, j)] = (x[at(m, 0 - 0, j)] + x[at(m, 0 + 1, j)] +
-                                x[at(m, 0, j - 1)] + x[at(m, 0, j + 1)] +
-                                b[at(m, 0, j)] * a) * r_b;
+          float x00 = x[at(m, 0, j - 1)];
+          float x01 = x[at(m, 0, j + 1)];
+          float x10 = x[at(m, 0 - 0, j)];
+          float x11 = x[at(m, 0 + 1, j)];
+          float b_a = b[at(m, 0, j)] * a;
+
+          x_new[at(m, 0, j)] = (x00 + x01 + x10 + x11 + b_a) * r_b;
         }
 
         // right boundary
         {
-          x_new[at(m, m - 1, j)] = (x[at(m, m - 1 - 1, j)] + x[at(m, m - 1 + 0, j)] +
-                                    x[at(m, m - 1, j - 1)] + x[at(m, m - 1, j + 1)] +
-                                    b[at(m, m - 1, j)] * a) * r_b;
+          float x00 = x[at(m, m - 1, j - 1)];
+          float x01 = x[at(m, m - 1, j + 1)];
+          float x10 = x[at(m, m - 1 - 1, j)];
+          float x11 = x[at(m, m - 1 + 0, j)];
+          float b_a = b[at(m, m - 1, j)] * a;
+
+          x_new[at(m, m - 1, j)] = (x00 + x01 + x10 + x11 + b_a) * r_b;
         }
       }
 
       for (int i = 1; i < m - 1; i++) {
         // bottom boundary
         {
-          x_new[at(m, i, 0)] = (x[at(m, i - 1, 0)] + x[at(m, i + 1, 0)] +
-                                x[at(m, i, 0 - 0)] + x[at(m, i, 0 + 1)] +
-                                b[at(m, i, 0)] * a) * r_b;
+          float x00 = x[at(m, i, 0 - 0)];
+          float x01 = x[at(m, i, 0 + 1)];
+          float x10 = x[at(m, i - 1, 0)];
+          float x11 = x[at(m, i + 1, 0)];
+          float b_a = b[at(m, i, 0)] * a;
+
+          x_new[at(m, i, 0)] = (x00 + x01 + x10 + x11 + b_a) * r_b;
         }
 
         // top boundary
         {
-          x_new[at(m, i, n - 1)] = (x[at(m, i - 1, n - 1)] + x[at(m, i + 1, n - 1)] +
-                                    x[at(m, i, n - 1 - 1)] + x[at(m, i, n - 1 + 0)] +
-                                    b[at(m, i, n - 1)] * a) * r_b;
+          float x00 = x[at(m, i - 1, n - 1)];
+          float x01 = x[at(m, i, n - 1 - 1)];
+          float x10 = x[at(m, i, n - 1 + 0)];
+          float x11 = x[at(m, i + 1, n - 1)];
+          float b_a = b[at(m, i, n - 1)] * a;
+
+          x_new[at(m, i, n - 1)] = (x00 + x01 + x10 + x11 + b_a) * r_b;
         }
       }
     }
@@ -408,9 +466,9 @@ namespace fluid {
       float a = (float) pow(_dx, 2) / (_v * _dt);
       float r_b = 1.0f / (4 + a);
 
-      for (int i = 0; i < n_jacob; i++) {
+      for (int i = 0; i < n_jacob / 2; i++) {
         util::jacobi2f(_w, _w_tmp, _w, a, r_b, _m, _n);
-        memcpy(_w, _w_tmp, _m * _n * 2 * sizeof(float));
+        util::jacobi2f(_w_tmp, _w, _w_tmp, a, r_b, _m, _n);
       }
     }
 
@@ -424,9 +482,9 @@ namespace fluid {
 
       util::divergence2f(_w, _w_div, _dx, _m, _n);
 
-      for (int i = 0; i < n_jacob; i++) {
+      for (int i = 0; i < n_jacob / 2; i++) {
         util::jacobi1f(_p, _p_tmp, _w_div, a, r_b, _m, _n);
-        memcpy(_p, _p_tmp, _m * _n * 1 * sizeof(float));
+        util::jacobi1f(_p_tmp, _p, _w_div, a, r_b, _m, _n);
       }
 
       util::gradient2f(_p, _w, _u, _dx, _m, _n);

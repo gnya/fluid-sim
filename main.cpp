@@ -5,8 +5,9 @@
 
 #include <iostream>
 #include <string>
-#include <GL/glut.h>
 #include <memory>
+#include <GL/glut.h>
+#include <boost/program_options.hpp>
 
 #include "lib/ink_fluid.h"
 #include "lib/map_fluid.h"
@@ -21,11 +22,18 @@ public:
     _start = clock();
   }
 
-  void stop(const char* str) {
+  void stop(const char* prefix) {
     clock_t stop = clock();
     double time = (double) (stop - _start) / CLOCKS_PER_SEC * 1000;
 
-    std::cout << "* " << str << " time:" << time << "ms" << std::endl;
+    std::cout << "[" << prefix << "] time: " << time << "ms" << std::endl;
+  }
+
+  template<class Process>
+  void operator()(Process p, const char* prefix, int loop = 1) {
+    start();
+    for (int i = 0; i < loop; i++) p();
+    stop(prefix);
   }
 };
 
@@ -35,7 +43,6 @@ public:
 // setting
 int width, height;
 float scale_x, scale_y;
-float noise_amplitude = 0;
 int simulation_mode = -1;
 bool save_enable = false;
 
@@ -90,19 +97,20 @@ void update_drag() {
   mouse_pos_old[1] = mouse_pos[1];
 }
 
-void display() {
-  update_drag();
-
+void update_fluid() {
   std::cout << "calc fluid" << std::endl;
   sim_timer.start();
 
-  sim->advect_velocity();
-  sim->diffuse(20);
+  timer([]{sim->advect_velocity();}, "advect_velocity");
+  //sim->advect_velocity();
+  timer([]{sim->diffuse(20);}, "diffuse");
+  //sim->diffuse(20);
   if (mouse_pressed) {
     // add force
     float p[] = {scale_x * mouse_pos[0] , scale_y * mouse_pos[1] };
     float f[] = {1500    * mouse_drag[0], 1500    * mouse_drag[1]};
-    sim->add_force(p, f, 100);
+    timer([&]{sim->add_force(p, f, 100);}, "add_force");
+    //sim->add_force(p, f, 100);
 
     if (simulation_mode == MAP_FLUID_MODE) {
       // nothing to do
@@ -113,18 +121,32 @@ void display() {
       sim.add_color(c_pos, color, 100);*/
     }
   }
-  sim->projection(40);
-  sim->boundary();
+  timer([]{sim->projection(40);}, "projection");
+  //sim->projection(40);
+  timer([]{sim->boundary();}, "boundary");
+  //sim->boundary();
 
   if (simulation_mode == MAP_FLUID_MODE) {
-    std::dynamic_pointer_cast<fluid::MapFluid>(sim)->advect_map();
+    timer([]{std::dynamic_pointer_cast<fluid::MapFluid>(sim)->advect_map();}, "advect_map");
+    //std::dynamic_pointer_cast<fluid::MapFluid>(sim)->advect_map();
+  } else if (simulation_mode == INK_FLUID_MODE) {
+    timer([]{std::dynamic_pointer_cast<fluid::InkFluid>(sim)->advect_ink();}, "advect_ink");
+    //std::dynamic_pointer_cast<fluid::InkFluid>(sim)->advect_ink();
+  }
+}
+
+void display() {
+  // update phase
+  update_drag();
+  sim_timer([]{update_fluid();}, "AMOUNT OF FLUID SIM");
+  //update_fluid();
+
+  // update dst_img
+  if (simulation_mode == MAP_FLUID_MODE) {
     std::dynamic_pointer_cast<fluid::MapFluid>(sim)->mapping(src_img.get_pixbuf(), dst_img->get_pixbuf());
   } else if (simulation_mode == INK_FLUID_MODE) {
-    std::dynamic_pointer_cast<fluid::InkFluid>(sim)->advect_ink();
     std::dynamic_pointer_cast<fluid::InkFluid>(sim)->get_ink(dst_img->get_pixbuf());
   }
-
-  sim_timer.stop("SIM AMOUNT OF TIME:");
 
   // draw image
   std::cout << "draw phase" << std::endl;
@@ -141,90 +163,93 @@ void display() {
   glutPostRedisplay();
 }
 
-int main(int argc, char **argv) {
-  // select save enable or disable
-  std::string save_enable_input;
-  std::cout << "If you want enable frame save, press 'Y' key. (Default: disable)" << std::endl << ">> ";
-  getline(std::cin, save_enable_input);
-  save_enable = save_enable_input[0] == 'Y' || save_enable_input[0] == 'y';
+int main(int argc, char *argv[]) {
+  using namespace boost::program_options;
 
-  // set width and height
-  std::string width_input, height_input;
-  std::cout << "Please enter width. (Default: 1000)" << std::endl << ">> ";
-  getline(std::cin, width_input);
-  width = width_input.empty() ? 1000 : std::stoi(width_input);
-  std::cout << "Please enter height. (Default: 1000)" << std::endl << ">> ";
-  getline(std::cin, height_input);
-  height = height_input.empty() ? 1000 : std::stoi(height_input);
-  std::cout << "Size: width x height = " << width << " x " << height << std::endl;
+  options_description opt("Option");
+  opt.add_options()
+    ("help,H", "Print help message")
+    ("save,s", "Save destination image")
+    ("width,w", value<int>()->default_value(1000), "Window width")
+    ("height,h", value<int>()->default_value(1000), "Window height")
+    ("scale_x", value<float>()->default_value(0.5f), "Field x scale")
+    ("scale_y", value<float>()->default_value(0.5f), "Field y scale")
+    ("src_img", value<std::string>()->default_value("text.png"), "Source image")
+    ("mode,m", value<std::string>()->default_value("Map"), "Simulation mode")
+    ("init_from_src", "Init ink from source image (Only Ink Fluid)")
+    ("noise_amp", value<float>()->default_value(10), "Perlin noise amplitude")
+    ("vel_x", value<float>()->default_value(0), "Fluid x velocity")
+    ("vel_y", value<float>()->default_value(0), "Fluid y velocity");
 
-  // set scale_x and scale_y
-  std::string scale_x_input, scale_y_input;
-  std::cout << "Please enter scale_x. (Default: 0.5f)" << std::endl << ">> ";
-  getline(std::cin, scale_x_input);
-  scale_x = scale_x_input.empty() ? 0.5f : std::stof(scale_x_input);
-  std::cout << "Please enter scale_y. (Default: 0.5f)" << std::endl << ">> ";
-  getline(std::cin, scale_y_input);
-  scale_y = scale_y_input.empty() ? 0.5f : std::stof(scale_y_input);
-  std::cout << "Field scale: scale_x x scale_y = " << scale_x << " x " << scale_y << std::endl;
+  variables_map map;
+  try {
+    store(parse_command_line(argc, argv, opt), map);
+  } catch (const error_with_option_name& e) {
+    std::cout << "[error] " << e.what() << std::endl;
 
-  // load source image
-  std::string filename_input;
-  std::cout << "Please enter source image name. (Default: text)" << std::endl << ">> ";
-  getline(std::cin, filename_input);
-  if (filename_input.empty()) filename_input = "text";
-  src_img.read(filename_input + ".png");
-
-  // init destination image
-  dst_img = std::make_shared<png::solid_image<png::rgb_pixel>>(width, height);
-
-  // select simulation mode
-  std::string sim_mode_input;
-  std::cout << "Please select simulation mode. Map Fluid Mode: 0 / Ink Fluid Mode: 1" << std::endl << ">> ";
-  getline(std::cin, sim_mode_input);
-  if (sim_mode_input.empty() || sim_mode_input[0] == '0') {
-    std::cout << "Map Fluid Mode was selected" << std::endl;
-    simulation_mode = MAP_FLUID_MODE;
-
-    // init simulator
-    sim = std::make_shared<fluid::MapFluid>(width, height, scale_x, scale_y, 0.03f, 1.0f, 0.0001f);
-  } else if (sim_mode_input[0] == '1') {
-    std::cout << "Ink Fluid Mode was selected" << std::endl;
-    simulation_mode = INK_FLUID_MODE;
-
-    // init simulator
-    sim = std::make_shared<fluid::InkFluid>(width, height, scale_x, scale_y, 0.03f, 1.0f, 0.0001f);
-
-    // init ink from image
-    std::string ink_from_image_input;
-    std::cout << "If you want init ink from source image, press 'Y' key. (Default: disable)" << std::endl << ">> ";
-    getline(std::cin, ink_from_image_input);
-    if (ink_from_image_input[0] == 'Y' || ink_from_image_input[0] == 'y') {
-      std::dynamic_pointer_cast<fluid::InkFluid>(sim)->set_ink(src_img.get_pixbuf());
-    }
-  } else {
     return -1;
   }
+  notify(map);
 
-  // set perlin noise amplitude
-  std::string noise_amplitude_input;
-  std::cout << "Please enter noise_amplitude. (Default: 10)" << std::endl << ">> ";
-  getline(std::cin, noise_amplitude_input);
-  noise_amplitude = noise_amplitude_input.empty() ? 10 : std::stof(noise_amplitude_input);
-  std::cout << "Noise Amplitude is " << noise_amplitude << std::endl;
-  fluid::Fluid::accelerate_by_perlin_noise(*sim, 0, 1, noise_amplitude);
+  if (map.count("help")) {
+    // print help message
+    std::cout << "[help] " << opt << std::endl;
 
-  // set fluid velocity
-  std::string vel_x_input, vel_y_input;
-  float vel[2];
-  std::cout << "Please enter vel_x. (Default: 0)" << std::endl << ">> ";
-  getline(std::cin, vel_x_input);
-  vel[0] = vel_x_input.empty() ? 0 : std::stoi(vel_x_input);
-  std::cout << "Please enter vel_y. (Default: 0)" << std::endl << ">> ";
-  getline(std::cin, vel_y_input);
-  vel[1] = vel_y_input.empty() ? 0 : std::stoi(vel_y_input);
-  std::cout << "Velocity: vel_x x vel_y = " << vel[0] << " x " << vel[1] << std::endl;
-  fluid::Fluid::accelerate_by_single_vector(*sim, vel);
+    return 0;
+  }
+
+  try {
+    // select save enable or disable
+    save_enable = map.count("save");
+
+    // set width and height
+    width = map["width"].as<int>();
+    height = map["height"].as<int>();
+
+    // set scale_x and scale_y
+    scale_x = map["scale_x"].as<float>();
+    scale_y = map["scale_y"].as<float>();
+
+    // load source image
+    src_img.read(map["src_img"].as<std::string>());
+
+    // init destination image
+    dst_img = std::make_shared<png::solid_image<png::rgb_pixel>>(width, height);
+
+    // select simulation mode
+    auto mode_name = map["mode"].as<std::string>();
+    if (mode_name == "Map" || mode_name == "map") {
+      simulation_mode = MAP_FLUID_MODE;
+
+      // init simulator
+      sim = std::make_shared<fluid::MapFluid>(width, height, scale_x, scale_y, 0.03f, 1.0f, 0.0001f);
+    } else if (mode_name == "Ink" || mode_name == "ink") {
+      simulation_mode = INK_FLUID_MODE;
+
+      // init simulator
+      sim = std::make_shared<fluid::InkFluid>(width, height, scale_x, scale_y, 0.03f, 1.0f, 0.0001f);
+
+      // init ink from image
+      if (map.count("init_from_src")) {
+        std::dynamic_pointer_cast<fluid::InkFluid>(sim)->set_ink(src_img.get_pixbuf());
+      }
+    } else {
+      std::cout << "[error] mode \"" << mode_name << "\" was not exist." << std::endl;
+
+      return -1;
+    }
+
+    // set perlin noise amplitude
+    fluid::Fluid::accelerate_by_perlin_noise(*sim, 0, 1, map["noise_amp"].as<float>());
+
+    // set fluid velocity
+    float vel[] = {map["vel_x"].as<float>(), map["vel_y"].as<float>()};
+    fluid::Fluid::accelerate_by_single_vector(*sim, vel);
+  } catch (const boost::bad_any_cast& e) {
+    std::cout << "[error] " << e.what() << std::endl;
+
+    return -1;
+  }
 
   // initialize OpenGL
   glutInit(&argc, argv);
