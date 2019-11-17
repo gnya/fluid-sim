@@ -97,19 +97,30 @@ void update_drag() {
   mouse_pos_old[1] = mouse_pos[1];
 }
 
+void key(unsigned char key, int x, int y) {
+  switch (key) {
+    case 'q':
+    case 'Q':
+    case '\033':  // escape key
+      std::exit(0);
+    default:
+      break;
+  }
+}
+
 void update_fluid() {
   std::cout << "calc fluid" << std::endl;
   sim_timer.start();
 
-  timer([]{sim->advect_velocity();}, "advect_velocity");
+  timer([]{sim->advect_velocity();}, "advect_velocity", 1);
   //sim->advect_velocity();
   timer([]{sim->diffuse(20);}, "diffuse");
   //sim->diffuse(20);
   if (mouse_pressed) {
     // add force
     float p[] = {scale_x * mouse_pos[0] , scale_y * mouse_pos[1] };
-    float f[] = {1500    * mouse_drag[0], 1500    * mouse_drag[1]};
-    timer([&]{sim->add_force(p, f, 100);}, "add_force");
+    float f[] = {500     * mouse_drag[0], 500     * mouse_drag[1]};
+    timer([&]{sim->add_force(p, f, 50);}, "add_force");
     //sim->add_force(p, f, 100);
 
     if (simulation_mode == MAP_FLUID_MODE) {
@@ -127,8 +138,9 @@ void update_fluid() {
   //sim->boundary();
 
   if (simulation_mode == MAP_FLUID_MODE) {
-    timer([]{std::dynamic_pointer_cast<fluid::MapFluid>(sim)->advect_map();}, "advect_map");
-    //std::dynamic_pointer_cast<fluid::MapFluid>(sim)->advect_map();
+    timer([]{std::dynamic_pointer_cast<fluid::MapFluid>(sim)->advect_map();}, "advect_map", 1);
+    //timer([]{std::dynamic_pointer_cast<fluid::MapFluid>(sim)->advect_map_new();}, "advect_map_new", 1);
+    std::dynamic_pointer_cast<fluid::MapFluid>(sim)->advect_map();
   } else if (simulation_mode == INK_FLUID_MODE) {
     timer([]{std::dynamic_pointer_cast<fluid::InkFluid>(sim)->advect_ink();}, "advect_ink");
     //std::dynamic_pointer_cast<fluid::InkFluid>(sim)->advect_ink();
@@ -170,11 +182,11 @@ int main(int argc, char *argv[]) {
   opt.add_options()
     ("help,H", "Print help message")
     ("save,s", "Save destination image")
-    ("width,w", value<int>()->default_value(1000), "Window width")
-    ("height,h", value<int>()->default_value(1000), "Window height")
+    ("width,w", value<int>()->default_value(1440), "Window width")
+    ("height,h", value<int>()->default_value(1080), "Window height")
     ("scale_x", value<float>()->default_value(0.5f), "Field x scale")
     ("scale_y", value<float>()->default_value(0.5f), "Field y scale")
-    ("src_img", value<std::string>()->default_value("text.png"), "Source image")
+    ("src_img", value<std::string>()->default_value("20191028.png"), "Source image")
     ("mode,m", value<std::string>()->default_value("Map"), "Simulation mode")
     ("init_from_src", "Init ink from source image (Only Ink Fluid)")
     ("noise_amp", value<float>()->default_value(10), "Perlin noise amplitude")
@@ -261,6 +273,7 @@ int main(int argc, char *argv[]) {
   glutPassiveMotionFunc(passive_motion);
   glutMotionFunc(motion);
   glutMouseFunc(mouse);
+  glutKeyboardFunc(key);
 
   glutDisplayFunc(display);
   glutMainLoop();

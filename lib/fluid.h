@@ -30,6 +30,25 @@ namespace fluid {
       return a + (b - a) * t;
     }
 
+    inline void lerp2d2f(const float *q, float *q_new, float t_x, float t_y, int m) {
+      // q0_x = lerp(q[q_i + 0, q_j + 0].x, q[q_i + 1, q_j + 0].x, t_x)
+      float q0_x = lerp(*(q + 0), *(q + 2), t_x);
+      // q0_y = lerp(q[q_i + 0, q_j + 0].y, q[q_i + 1, q_j + 0].y, t_x)
+      float q0_y = lerp(*(q + 1), *(q + 3), t_x);
+
+      q += m * 2;
+
+      // q1_x = lerp(q[q_i + 0, q_j + 1].x, q[q_i + 1, q_j + 1].x, t_x)
+      float q1_x = lerp(*(q + 0), *(q + 2), t_x);
+      // q1_y = lerp(q[q_i + 0, q_j + 1].y, q[q_i + 1, q_j + 1].y, t_x)
+      float q1_y = lerp(*(q + 1), *(q + 3), t_x);
+
+      // q_new[i, j].x = lerp(q0_x, q1_x, t_y);
+      *(q_new + 0) = lerp(q0_x, q1_x, t_y);
+      // q_new[i, j].y = lerp(q0_y, q1_y, t_y);
+      *(q_new + 1) = lerp(q0_y, q1_y, t_y);
+    }
+
     void advect_scaled2f(float *q, float *q_new, float *u,
                          float dt, float dx,
                          int q_m, int q_n,
@@ -39,8 +58,10 @@ namespace fluid {
 
       for (int u_j = 0; u_j < u_n; u_j++) {
         for (int u_i = 0; u_i < u_m; u_i++) {
-          float du_x = -u[at2_x(u_m, u_i, u_j)] * dt * dx;
-          float du_y = -u[at2_y(u_m, u_i, u_j)] * dt * dx;
+          // du_x = -u[u_i, u_j].x * dt * dx
+          float du_x = -(*u++) * dt * dx;
+          // du_y = -u[u_i, u_j].y * dt * dx
+          float du_y = -(*u++) * dt * dx;
 
           int du_i = (int) floor(du_x);
           int du_j = (int) floor(du_y);
@@ -48,32 +69,36 @@ namespace fluid {
           float dec_x = du_x - du_i;
           float dec_y = du_y - du_j;
 
-          for (int j = u_j * scale_n; j < (u_j + 1) * scale_n; j++) {
-            int q_j = std::max(0, std::min(j + du_j, q_n - 2));
+          int i_bgn = u_i * scale_m, i_end = (u_i + 1) * scale_m;
+          int j_bgn = u_j * scale_n, j_end = (u_j + 1) * scale_n;
 
-            for (int i = u_i * scale_m; i < (u_i + 1) * scale_m; i++) {
-              int q_i = std::max(0, std::min(i + du_i, q_m - 2));
+          bool c_i = i_bgn + du_i >= 0 && i_end + du_i < q_m - 1;
+          bool c_j = j_bgn + du_j >= 0 && j_end + du_j < q_n - 1;
 
-              float q00_x = q[at2_x(q_m, q_i + 0, q_j + 0)];
-              float q00_y = q[at2_y(q_m, q_i + 0, q_j + 0)];
+          if (c_i && c_j) {
+            float *q_ptr = &q[at2_x(q_m, i_bgn + du_i, j_bgn + du_j)];
+            float *q_new_ptr = &q_new[at2_x(q_m, i_bgn, j_bgn)];
 
-              float q01_x = q[at2_x(q_m, q_i + 0, q_j + 1)];
-              float q01_y = q[at2_y(q_m, q_i + 0, q_j + 1)];
+            for (int j = 0; j < j_end - j_bgn; j++) {
+              for (int i = 0; i < i_end - i_bgn; i++) {
+                lerp2d2f(q_ptr + i * 2, q_new_ptr + i * 2, dec_x, dec_y, q_m);
+              }
 
-              float q10_x = q[at2_x(q_m, q_i + 1, q_j + 0)];
-              float q10_y = q[at2_y(q_m, q_i + 1, q_j + 0)];
+              q_ptr += q_m * 2;
+              q_new_ptr += q_m * 2;
+            }
+          } else {
+            for (int j = j_bgn; j < j_end; j++) {
+              int q_j = std::max(0, std::min(j + du_j, q_n - 2));
 
-              float q11_x = q[at2_x(q_m, q_i + 1, q_j + 1)];
-              float q11_y = q[at2_y(q_m, q_i + 1, q_j + 1)];
+              for (int i = i_bgn; i < i_end; i++) {
+                int q_i = std::max(0, std::min(i + du_i, q_m - 2));
 
-              float q0_x = lerp(q00_x, q10_x, dec_x);
-              float q0_y = lerp(q00_y, q10_y, dec_x);
+                float *q_ptr = &q[at2_x(q_m, q_i, q_j)];
+                float *q_new_ptr = &q_new[at2_x(q_m, i, j)];
 
-              float q1_x = lerp(q01_x, q11_x, dec_x);
-              float q1_y = lerp(q01_y, q11_y, dec_x);
-
-              q_new[at2_x(q_m, i, j)] = lerp(q0_x, q1_x, dec_y);
-              q_new[at2_y(q_m, i, j)] = lerp(q0_y, q1_y, dec_y);
+                lerp2d2f(q_ptr, q_new_ptr, dec_x, dec_y, q_m);
+              }
             }
           }
         }
@@ -84,8 +109,10 @@ namespace fluid {
                   float dt, float dx, int m, int n) {
       for (int j = 0; j < n; j++) {
         for (int i = 0; i < m; i++) {
-          float x = i - u[at2_x(m, i, j)] * dt * dx;
-          float y = j - u[at2_y(m, i, j)] * dt * dx;
+          // x = i - u[i, j].x * dt * dx;
+          float x = i - *u++ * dt * dx;
+          // y = j - u[i, j].y * dt * dx;
+          float y = j - *u++ * dt * dx;
 
           int q_i = (int) floor(x);
           int q_j = (int) floor(y);
@@ -96,26 +123,9 @@ namespace fluid {
           q_i = std::max(0, std::min(q_i, m - 2));
           q_j = std::max(0, std::min(q_j, n - 2));
 
-          float q00_x = q[at2_x(m, q_i + 0, q_j + 0)];
-          float q00_y = q[at2_y(m, q_i + 0, q_j + 0)];
+          lerp2d2f(&q[at2_x(m, q_i, q_j)], q_new, dec_x, dec_y, m);
 
-          float q01_x = q[at2_x(m, q_i + 0, q_j + 1)];
-          float q01_y = q[at2_y(m, q_i + 0, q_j + 1)];
-
-          float q10_x = q[at2_x(m, q_i + 1, q_j + 0)];
-          float q10_y = q[at2_y(m, q_i + 1, q_j + 0)];
-
-          float q11_x = q[at2_x(m, q_i + 1, q_j + 1)];
-          float q11_y = q[at2_y(m, q_i + 1, q_j + 1)];
-
-          float q0_x = lerp(q00_x, q10_x, dec_x);
-          float q0_y = lerp(q00_y, q10_y, dec_x);
-
-          float q1_x = lerp(q01_x, q11_x, dec_x);
-          float q1_y = lerp(q01_y, q11_y, dec_x);
-
-          q_new[at2_x(m, i, j)] = lerp(q0_x, q1_x, dec_y);
-          q_new[at2_y(m, i, j)] = lerp(q0_y, q1_y, dec_y);
+          q_new += 2;
         }
       }
     }
