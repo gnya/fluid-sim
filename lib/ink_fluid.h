@@ -28,8 +28,8 @@ namespace fluid {
       _width = width;
       _height = height;
 
-      _ink     = new float[width * height * 2];
-      _ink_tmp = new float[width * height * 2];
+      _ink     = new (std::align_val_t{32}) float[width * height * 2];
+      _ink_tmp = new (std::align_val_t{32}) float[width * height * 2];
     }
 
     ~InkFluid() override {

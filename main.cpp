@@ -9,6 +9,7 @@
 #include <GL/glut.h>
 #include <boost/program_options.hpp>
 
+#define __STDC_LIB_EXT1__
 #include "lib/ink_fluid.h"
 #include "lib/map_fluid.h"
 
@@ -112,7 +113,7 @@ void update_fluid() {
   std::cout << "calc fluid" << std::endl;
   sim_timer.start();
 
-  timer([]{sim->advect_velocity();}, "advect_velocity", 1);
+  timer([]{sim->advect_velocity();}, "advect_velocity");
   //sim->advect_velocity();
   timer([]{sim->diffuse(20);}, "diffuse");
   //sim->diffuse(20);
@@ -138,7 +139,7 @@ void update_fluid() {
   //sim->boundary();
 
   if (simulation_mode == MAP_FLUID_MODE) {
-    timer([]{std::dynamic_pointer_cast<fluid::MapFluid>(sim)->advect_map();}, "advect_map", 1);
+    timer([]{std::dynamic_pointer_cast<fluid::MapFluid>(sim)->advect_map();}, "advect_map");
     //timer([]{std::dynamic_pointer_cast<fluid::MapFluid>(sim)->advect_map_new();}, "advect_map_new", 1);
     std::dynamic_pointer_cast<fluid::MapFluid>(sim)->advect_map();
   } else if (simulation_mode == INK_FLUID_MODE) {
@@ -191,7 +192,10 @@ int main(int argc, char *argv[]) {
     ("init_from_src", "Init ink from source image (Only Ink Fluid)")
     ("noise_amp", value<float>()->default_value(10), "Perlin noise amplitude")
     ("vel_x", value<float>()->default_value(0), "Fluid x velocity")
-    ("vel_y", value<float>()->default_value(0), "Fluid y velocity");
+    ("vel_y", value<float>()->default_value(0), "Fluid y velocity")
+    ("delta_t", value<float>()->default_value(0.03f), "Simulation delta t")
+    ("delta_x", value<float>()->default_value(1), "Simulation delta x")
+    ("viscosity", value<float>()->default_value(0.5f), "Fluid viscosity");
 
   variables_map map;
   try {
@@ -228,18 +232,23 @@ int main(int argc, char *argv[]) {
     // init destination image
     dst_img = std::make_shared<png::solid_image<png::rgb_pixel>>(width, height);
 
+    // fluid property
+    float dt = map["delta_t"].as<float>();
+    float dx = map["delta_x"].as<float>();
+    float viscosity = map["viscosity"].as<float>();
+
     // select simulation mode
     auto mode_name = map["mode"].as<std::string>();
     if (mode_name == "Map" || mode_name == "map") {
       simulation_mode = MAP_FLUID_MODE;
 
       // init simulator
-      sim = std::make_shared<fluid::MapFluid>(width, height, scale_x, scale_y, 0.03f, 1.0f, 0.0001f);
+      sim = std::make_shared<fluid::MapFluid>(width, height, scale_x, scale_y, dt, dx, viscosity);
     } else if (mode_name == "Ink" || mode_name == "ink") {
       simulation_mode = INK_FLUID_MODE;
 
       // init simulator
-      sim = std::make_shared<fluid::InkFluid>(width, height, scale_x, scale_y, 0.03f, 1.0f, 0.0001f);
+      sim = std::make_shared<fluid::InkFluid>(width, height, scale_x, scale_y, dt, dx, viscosity);
 
       // init ink from image
       if (map.count("init_from_src")) {

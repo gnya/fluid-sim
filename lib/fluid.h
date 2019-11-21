@@ -7,6 +7,7 @@
 #define FLUID_SIM_FLUID_H
 
 #include <ctgmath>
+#include <immintrin.h>
 
 #include "noise.h"
 
@@ -130,160 +131,171 @@ namespace fluid {
       }
     }
 
+    inline void jacobi_step2f(float *x, float *x_new, float *b,
+                              float a, float r_b, int m,
+                              int c_l = 1, int c_r = 1,
+                              int c_b = 1, int c_t = 1) {
+      float x00_x = *(x - 2 * m * c_b + 0); // x[i, j - 1].x
+      float x00_y = *(x - 2 * m * c_b + 1); // x[i, j - 1].y
+      float x01_x = *(x + 2 * m * c_t + 0); // x[i, j + 1].x
+      float x01_y = *(x + 2 * m * c_t + 1); // x[i, j + 1].y
+      float x10_x = *(x - 2 * 1 * c_l + 0); // x[i - 1, j].x
+      float x10_y = *(x - 2 * 1 * c_l + 1); // x[i - 1, j].y
+      float x11_x = *(x + 2 * 1 * c_r + 0); // x[i + 1, j].x
+      float x11_y = *(x + 2 * 1 * c_r + 1); // x[i + 1, j].y
+      float b_x_a = *(b + 0) * a; // b[i, j].x * a;
+      float b_y_a = *(b + 1) * a; // b[i, j].y * a;
+
+      // x_new[i, j].x
+      *(x_new + 0) = (x00_x + x01_x + x10_x + x11_x + b_x_a) * r_b;
+      // x_new[i, j].y
+      *(x_new + 1) = (x00_y + x01_y + x10_y + x11_y + b_y_a) * r_b;
+    }
+
     void jacobi2f(float *x, float *x_new, float *b,
                   float a, float r_b, int m, int n) {
-      // inner of boundary
-      for (int j = 1; j < n - 1; j++) {
-        for (int i = 1; i < m - 1; i++) {
-          float x00_x = x[at2_x(m, i, j - 1)];
-          float x00_y = x[at2_y(m, i, j - 1)];
-          float x01_x = x[at2_x(m, i, j + 1)];
-          float x01_y = x[at2_y(m, i, j + 1)];
-          float x10_x = x[at2_x(m, i - 1, j)];
-          float x10_y = x[at2_y(m, i - 1, j)];
-          float x11_x = x[at2_x(m, i + 1, j)];
-          float x11_y = x[at2_y(m, i + 1, j)];
-          float b_x_a = b[at2_x(m, i, j)] * a;
-          float b_y_a = b[at2_y(m, i, j)] * a;
+      __m256 _a = _mm256_set1_ps(a);
+      __m256 _r_b = _mm256_set1_ps(r_b);
+      auto i_parallel_end = (m - 1) - (m - 2) % 4;
 
-          x_new[at2_x(m, i, j)] = (x00_x + x01_x + x10_x + x11_x + b_x_a) * r_b;
-          x_new[at2_y(m, i, j)] = (x00_y + x01_y + x10_y + x11_y + b_y_a) * r_b;
+      // inner of boundary
+      for (int j = 1; j < n - 1; ++j) {
+        for (int i = 1; i < i_parallel_end; i += 4) {
+          __m256 x00 = _mm256_load_ps(&x[at2_x(m, i, j - 1)]);
+          __m256 x01 = _mm256_load_ps(&x[at2_x(m, i, j + 1)]);
+          __m256 x10 = _mm256_load_ps(&x[at2_x(m, i - 1, j)]);
+          __m256 x11 = _mm256_load_ps(&x[at2_x(m, i + 1, j)]);
+          __m256 _b  = _mm256_load_ps(&b[at2_x(m, i, j)]);
+
+          __m256 tmp;
+
+          tmp = _mm256_mul_ps(_a, _b);
+          tmp = _mm256_add_ps(tmp, x00);
+          tmp = _mm256_add_ps(tmp, x01);
+          tmp = _mm256_add_ps(tmp, x10);
+          tmp = _mm256_add_ps(tmp, x11);
+          tmp = _mm256_mul_ps(tmp, _r_b);
+
+          _mm256_storeu_ps(&x_new[at2_x(m, i, j)], tmp);
+        }
+
+        for (int i = i_parallel_end; i < m - 1; ++i) {
+          int idx = at2_x(m, i, j);
+
+          jacobi_step2f(&x[idx], &x_new[idx], &b[idx], a, r_b, m);
         }
       }
 
-      for (int j = 1; j < n - 1; j++) {
+      for (int j = 1; j < n - 1; ++j) {
         // left boundary
         {
-          float x00_x = x[at2_x(m, 0, j - 1)];
-          float x00_y = x[at2_y(m, 0, j - 1)];
-          float x01_x = x[at2_x(m, 0, j + 1)];
-          float x01_y = x[at2_y(m, 0, j + 1)];
-          float x10_x = x[at2_x(m, 0 - 0, j)];
-          float x10_y = x[at2_y(m, 0 - 0, j)];
-          float x11_x = x[at2_x(m, 0 + 1, j)];
-          float x11_y = x[at2_y(m, 0 + 1, j)];
-          float b_x_a = b[at2_x(m, 0, j)] * a;
-          float b_y_a = b[at2_y(m, 0, j)] * a;
+          int idx = at2_x(m, 0, j);
 
-          x_new[at2_x(m, 0, j)] = (x00_x + x01_x + x10_x + x11_x + b_x_a) * r_b;
-          x_new[at2_y(m, 0, j)] = (x00_y + x01_y + x10_y + x11_y + b_y_a) * r_b;
+          jacobi_step2f(&x[idx], &x_new[idx], &b[idx], a, r_b, m, 0, 1, 1, 1);
         }
 
         // right boundary
         {
-          float x00_x = x[at2_x(m, m - 1, j - 1)];
-          float x00_y = x[at2_y(m, m - 1, j - 1)];
-          float x01_x = x[at2_x(m, m - 1, j + 1)];
-          float x01_y = x[at2_y(m, m - 1, j + 1)];
-          float x10_x = x[at2_x(m, m - 1 - 1, j)];
-          float x10_y = x[at2_y(m, m - 1 - 1, j)];
-          float x11_x = x[at2_x(m, m - 1 + 0, j)];
-          float x11_y = x[at2_y(m, m - 1 + 0, j)];
-          float b_x_a = b[at2_x(m, m - 1, j)] * a;
-          float b_y_a = b[at2_y(m, m - 1, j)] * a;
+          int idx = at2_x(m, m - 1, j);
 
-          x_new[at2_x(m, m - 1, j)] = (x00_x + x01_x + x10_x + x11_x + b_x_a) * r_b;
-          x_new[at2_y(m, m - 1, j)] = (x00_y + x01_y + x10_y + x11_y + b_y_a) * r_b;
+          jacobi_step2f(&x[idx], &x_new[idx], &b[idx], a, r_b, m, 1, 0, 1, 1);
         }
       }
 
-      for (int i = 1; i < m - 1; i++) {
+      for (int i = 1; i < m - 1; ++i) {
         // bottom boundary
         {
-          float x00_x = x[at2_x(m, i, 0 - 0)];
-          float x00_y = x[at2_y(m, i, 0 - 0)];
-          float x01_x = x[at2_x(m, i, 0 + 1)];
-          float x01_y = x[at2_y(m, i, 0 + 1)];
-          float x10_x = x[at2_x(m, i - 1, 0)];
-          float x10_y = x[at2_y(m, i - 1, 0)];
-          float x11_x = x[at2_x(m, i + 1, 0)];
-          float x11_y = x[at2_y(m, i + 1, 0)];
-          float b_x_a = b[at2_x(m, i, 0)] * a;
-          float b_y_a = b[at2_y(m, i, 0)] * a;
+          int idx = at2_x(m, i, 0);
 
-          x_new[at2_x(m, i, 0)] = (x00_x + x01_x + x10_x + x11_x + b_x_a) * r_b;
-          x_new[at2_y(m, i, 0)] = (x00_y + x01_y + x10_y + x11_y + b_y_a) * r_b;
+          jacobi_step2f(&x[idx], &x_new[idx], &b[idx], a, r_b, m, 1, 1, 0, 1);
         }
 
         // top boundary
         {
-          float x00_x = x[at2_x(m, i, n - 1 - 1)];
-          float x00_y = x[at2_y(m, i, n - 1 - 1)];
-          float x01_x = x[at2_x(m, i, n - 1 + 0)];
-          float x01_y = x[at2_y(m, i, n - 1 + 0)];
-          float x10_x = x[at2_x(m, i - 1, n - 1)];
-          float x10_y = x[at2_y(m, i - 1, n - 1)];
-          float x11_x = x[at2_x(m, i + 1, n - 1)];
-          float x11_y = x[at2_y(m, i + 1, n - 1)];
-          float b_x_a = b[at2_x(m, i, n - 1)] * a;
-          float b_y_a = b[at2_y(m, i, n - 1)] * a;
+          int idx = at2_x(m, i, n - 1);
 
-          x_new[at2_x(m, i, n - 1)] = (x00_x + x01_x + x10_x + x11_x + b_x_a) * r_b;
-          x_new[at2_y(m, i, n - 1)] = (x00_y + x01_y + x10_y + x11_y + b_y_a) * r_b;
+          jacobi_step2f(&x[idx], &x_new[idx], &b[idx], a, r_b, m, 1, 1, 1, 0);
         }
       }
     }
 
+    inline void jacobi_step1f(float *x, float *x_new, float *b,
+                              float a, float r_b, int m,
+                              int c_l = 1, int c_r = 1,
+                              int c_b = 1, int c_t = 1) {
+      float x00 = *(x - m * c_b); // x[i, j - 1]
+      float x01 = *(x + m * c_t); // x[i, j + 1]
+      float x10 = *(x - 1 * c_l); // x[i - 1, j]
+      float x11 = *(x + 1 * c_r); // x[i + 1, j]
+      float b_a = *b * a; // b[i, j] * a;
+
+      // x_new[i, j]
+      *x_new = (x00 + x01 + x10 + x11 + b_a) * r_b;
+    }
+
     void jacobi1f(float *x, float *x_new, float *b,
                   float a, float r_b, int m, int n) {
-      // inner of boundary
-      for (int j = 1; j < n - 1; j++) {
-        for (int i = 1; i < m - 1; i++) {
-          float x00 = x[at(m, i, j - 1)];
-          float x01 = x[at(m, i, j + 1)];
-          float x10 = x[at(m, i - 1, j)];
-          float x11 = x[at(m, i + 1, j)];
-          float b_a = b[at(m, i, j)] * a;
+      __m256 _a = _mm256_set1_ps(a);
+      __m256 _r_b = _mm256_set1_ps(r_b);
+      auto i_parallel_end = (m - 1) - (m - 2) % 8;
 
-          x_new[at(m, i, j)] = (x00 + x01 + x10 + x11 + b_a) * r_b;
+      // inner of boundary
+      for (int j = 1; j < n - 1; ++j) {
+        for (int i = 1; i < i_parallel_end; i += 8) {
+          __m256 x00 = _mm256_load_ps(&x[at(m, i, j - 1)]);
+          __m256 x01 = _mm256_load_ps(&x[at(m, i, j + 1)]);
+          __m256 x10 = _mm256_load_ps(&x[at(m, i - 1, j)]);
+          __m256 x11 = _mm256_load_ps(&x[at(m, i + 1, j)]);
+          __m256 _b  = _mm256_load_ps(&b[at(m, i, j)]);
+
+          __m256 tmp;
+
+          tmp = _mm256_mul_ps(_a, _b);
+          tmp = _mm256_add_ps(tmp, x00);
+          tmp = _mm256_add_ps(tmp, x01);
+          tmp = _mm256_add_ps(tmp, x10);
+          tmp = _mm256_add_ps(tmp, x11);
+          tmp = _mm256_mul_ps(tmp, _r_b);
+
+          _mm256_storeu_ps(&x_new[at(m, i, j)], tmp);
+        }
+
+        for (int i = i_parallel_end; i < m - 1; ++i) {
+          int idx = at(m, i, j);
+
+          jacobi_step1f(&x[idx], &x_new[idx], &b[idx], a, r_b, m);
         }
       }
 
-      for (int j = 1; j < n - 1; j++) {
+      for (int j = 1; j < n - 1; ++j) {
         // left boundary
         {
-          float x00 = x[at(m, 0, j - 1)];
-          float x01 = x[at(m, 0, j + 1)];
-          float x10 = x[at(m, 0 - 0, j)];
-          float x11 = x[at(m, 0 + 1, j)];
-          float b_a = b[at(m, 0, j)] * a;
+          int idx = at(m, 0, j);
 
-          x_new[at(m, 0, j)] = (x00 + x01 + x10 + x11 + b_a) * r_b;
+          jacobi_step1f(&x[idx], &x_new[idx], &b[idx], a, r_b, m, 0, 1, 1, 1);
         }
 
         // right boundary
         {
-          float x00 = x[at(m, m - 1, j - 1)];
-          float x01 = x[at(m, m - 1, j + 1)];
-          float x10 = x[at(m, m - 1 - 1, j)];
-          float x11 = x[at(m, m - 1 + 0, j)];
-          float b_a = b[at(m, m - 1, j)] * a;
+          int idx = at(m, m - 1, j);
 
-          x_new[at(m, m - 1, j)] = (x00 + x01 + x10 + x11 + b_a) * r_b;
+          jacobi_step1f(&x[idx], &x_new[idx], &b[idx], a, r_b, m, 1, 0, 1, 1);
         }
       }
 
-      for (int i = 1; i < m - 1; i++) {
+      for (int i = 1; i < m - 1; ++i) {
         // bottom boundary
         {
-          float x00 = x[at(m, i, 0 - 0)];
-          float x01 = x[at(m, i, 0 + 1)];
-          float x10 = x[at(m, i - 1, 0)];
-          float x11 = x[at(m, i + 1, 0)];
-          float b_a = b[at(m, i, 0)] * a;
+          int idx = at(m, i, 0);
 
-          x_new[at(m, i, 0)] = (x00 + x01 + x10 + x11 + b_a) * r_b;
+          jacobi_step1f(&x[idx], &x_new[idx], &b[idx], a, r_b, m, 1, 1, 0, 1);
         }
 
         // top boundary
         {
-          float x00 = x[at(m, i - 1, n - 1)];
-          float x01 = x[at(m, i, n - 1 - 1)];
-          float x10 = x[at(m, i, n - 1 + 0)];
-          float x11 = x[at(m, i + 1, n - 1)];
-          float b_a = b[at(m, i, n - 1)] * a;
+          int idx = at(m, i, n - 1);
 
-          x_new[at(m, i, n - 1)] = (x00 + x01 + x10 + x11 + b_a) * r_b;
+          jacobi_step1f(&x[idx], &x_new[idx], &b[idx], a, r_b, m, 1, 1, 1, 0);
         }
       }
     }
@@ -450,12 +462,12 @@ namespace fluid {
       _dx = dx;
       _v  = v;
 
-      _u     = new float[m * n * 2];
-      _w     = new float[m * n * 2];
-      _w_tmp = new float[m * n * 2];
-      _w_div = new float[m * n * 1];
-      _p     = new float[m * n * 1];
-      _p_tmp = new float[m * n * 1];
+      _u     = new (std::align_val_t{32}) float[m * n * 2];
+      _w     = new (std::align_val_t{32}) float[m * n * 2];
+      _w_tmp = new (std::align_val_t{32}) float[m * n * 2];
+      _w_div = new (std::align_val_t{32}) float[m * n * 1];
+      _p     = new (std::align_val_t{32}) float[m * n * 1];
+      _p_tmp = new (std::align_val_t{32}) float[m * n * 1];
     }
 
     virtual ~Fluid() {
