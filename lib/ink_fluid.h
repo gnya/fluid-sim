@@ -4,16 +4,14 @@
  */
 
 
-#ifndef FLUID_SIM_INK_FLUID_H
-#define FLUID_SIM_INK_FLUID_H
+#ifndef FLUID_INK_FLUID_H
+#define FLUID_INK_FLUID_H
 
 #include "fluid.h"
 
 #include <png++/png.hpp>
 
 namespace fluid {
-  using namespace png;
-
   class InkFluid : public Fluid {
   protected:
     int _width{}, _height{};
@@ -39,19 +37,19 @@ namespace fluid {
     }
 
     void advect_ink() {
-      util::advect_scaled2f(_ink, _ink_tmp, _u, _dt, _dx, _width, _height, _m, _n);
+      math::advect_scaled2f(_ink, _ink_tmp, _u, _dt, _dx, _width, _height, _m, _n);
       memcpy(_ink, _ink_tmp, _width * _height * 2 * sizeof(float));
     }
 
     template<typename pixel>
-    void set_ink(const pixel_buffer<pixel> &src) {};
+    void set_ink(const png::pixel_buffer<pixel> &src) {};
 
     template<typename pixel>
-    void get_ink(solid_pixel_buffer<pixel> &dst) {};
+    void get_ink(png::solid_pixel_buffer<pixel> &dst) {};
   };
 
   template <>
-  void InkFluid::set_ink(const pixel_buffer<rgb_pixel> &src) {
+  void InkFluid::set_ink(const png::pixel_buffer<png::rgb_pixel> &src) {
     for (int j = 0; j < _height; j++) {
       for (int i = 0; i < _width; i++) {
         _ink[util::at2_x(_width, i, j)] = src[j][i].red;
@@ -61,7 +59,7 @@ namespace fluid {
   }
 
   template <>
-  void InkFluid::get_ink(solid_pixel_buffer<rgb_pixel> &dst) {
+  void InkFluid::get_ink(png::solid_pixel_buffer<png::rgb_pixel> &dst) {
     for (int j = 0; j < _height; j++) {
       for (int i = 0; i < _width; i++) {
         int x = (int) _ink[util::at2_x(_width, i, j)];
@@ -73,4 +71,4 @@ namespace fluid {
   }
 }
 
-#endif //FLUID_SIM_INK_FLUID_H
+#endif //FLUID_INK_FLUID_H

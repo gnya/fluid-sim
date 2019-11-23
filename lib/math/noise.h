@@ -3,26 +3,13 @@
  * date:   2019 11 15
  */
 
-#ifndef FLUID_SIM_NOISE_H
-#define FLUID_SIM_NOISE_H
+#ifndef FLUID_MATH_NOISE_H
+#define FLUID_MATH_NOISE_H
 
 #include <random>
 #include <algorithm>
 
-namespace noise {
-  using namespace std;
-
-  namespace util {
-    float lerp(float a, float b, float t, float (*f)(float)) {
-      return a + (b - a) * f(t);
-    }
-
-    // quintic equation
-    float f(float t) {
-      return 6.0f * pow(t, 5.0f) - 15.0f * pow(t, 4.0f) + 10 * pow(t, 3.0f);
-    }
-  }
-
+namespace fluid::math::noise {
   class PerlinNoise {
   private:
     // hash lookup table size
@@ -32,13 +19,17 @@ namespace noise {
     const float _hash2rad = 2.0f * M_PI / 255.0f;
 
     std::vector<unsigned char> _table;
+
+    float (*_func)(float);
   public:
-    explicit PerlinNoise(int seed = 0) {
+    explicit PerlinNoise(int seed = 0, float (*func)(float) = util::lerp_func::quintic) {
       std::mt19937 engine(seed);
 
       _table.resize(_perlin_table_size);
       std::iota(_table.begin(), _table.end(), 0);
       std::shuffle(_table.begin(), _table.end(), engine);
+
+      _func = func;
     }
 
     unsigned char table(int x, int y) {
@@ -46,7 +37,7 @@ namespace noise {
     }
 
     float grad(int x_hash, int y_hash, float x, float y) {
-      float theta = table(x_hash, y_hash) * _hash2rad;
+      float theta = (float) table(x_hash, y_hash) * _hash2rad;
 
       return x * cos(theta) + y * sin(theta);
     }
@@ -64,10 +55,10 @@ namespace noise {
       float g10 = grad(x_hash + 0, y_hash + 1, xf - 0, yf - 1);
       float g11 = grad(x_hash + 1, y_hash + 1, xf - 1, yf - 1);
 
-      float gx0 = util::lerp(g00, g01, xf, util::f);
-      float gx1 = util::lerp(g10, g11, xf, util::f);
+      float gx0 = util::lerp(g00, g01, xf, _func);
+      float gx1 = util::lerp(g10, g11, xf, _func);
 
-      return (util::lerp(gx0, gx1, yf, util::f) + 1) / 2; // [-1, 1] -> [0, 1]
+      return (util::lerp(gx0, gx1, yf, _func) + 1) / 2; // [-1, 1] -> [0, 1]
     }
   };
 
@@ -91,4 +82,4 @@ namespace noise {
   };
 }
 
-#endif //FLUID_SIM_NOISE_H
+#endif //FLUID_MATH_NOISE_H

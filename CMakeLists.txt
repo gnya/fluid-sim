@@ -23,5 +23,5 @@ include_directories(${PNG_INCLUDE_DIR})
 include_directories(${BOOST_INCLUDE_DIR})
 include_directories("${PROJECT_SOURCE_DIR}/lib/")
 
-add_executable(fluid_sim main.cpp lib/fluid.h lib/map_fluid.h lib/noise.h lib/ink_fluid.h)
+add_executable(fluid_sim main.cpp lib/fluid.h lib/map_fluid.h lib/math/noise.h lib/ink_fluid.h lib/math/advect.h lib/math/util.h lib/math/math.h lib/math/jacobi.h lib/math/divergence.h lib/math/gradient.h)
 target_link_libraries(fluid_sim Threads::Threads PNG::PNG GLUT::GLUT OpenGL::GL ${Boost_LIBRARIES})

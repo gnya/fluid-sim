@@ -6,37 +6,16 @@
 #include <iostream>
 #include <string>
 #include <memory>
+#include <regex>
+#include <thread>
+#include <filesystem>
+#include <algorithm>
 #include <GL/glut.h>
 #include <boost/program_options.hpp>
 
 #define __STDC_LIB_EXT1__
 #include "lib/ink_fluid.h"
 #include "lib/map_fluid.h"
-
-class Timer {
-public:
-  clock_t _start{};
-
-  Timer() = default;
-
-  void start() {
-    _start = clock();
-  }
-
-  void stop(const char* prefix) {
-    clock_t stop = clock();
-    double time = (double) (stop - _start) / CLOCKS_PER_SEC * 1000;
-
-    std::cout << "[" << prefix << "] time: " << time << "ms" << std::endl;
-  }
-
-  template<class Process>
-  void operator()(Process p, const char* prefix, int loop = 1) {
-    start();
-    for (int i = 0; i < loop; i++) p();
-    stop(prefix);
-  }
-};
 
 #define MAP_FLUID_MODE 0
 #define INK_FLUID_MODE 1
@@ -49,15 +28,18 @@ bool save_enable = false;
 
 // simulator
 std::shared_ptr<fluid::Fluid> sim;
-Timer timer, sim_timer;
+auto map_sim = []{return std::dynamic_pointer_cast<fluid::MapFluid>(sim);};
+auto ink_sim = []{return std::dynamic_pointer_cast<fluid::InkFluid>(sim);};
 
 // image
 namespace png {
-  template< typename pixel>
+  template<typename pixel>
   using solid_image = image<pixel, solid_pixel_buffer<pixel>>;
 }
-png::image<png::rgb_pixel> src_img;
-std::shared_ptr<png::solid_image<png::rgb_pixel>> dst_img;
+int src_frame_number = 0;
+std::vector<png::pixel_buffer<png::rgb_pixel>> src_buf_seq;
+std::string dst_img_dir;
+std::shared_ptr<png::solid_image<png::rgb_pixel>> dst_img_ptr;
 
 // mouse
 float mouse_pos[2] = {};
@@ -110,8 +92,7 @@ void key(unsigned char key, int x, int y) {
 }
 
 void update_fluid() {
-  std::cout << "calc fluid" << std::endl;
-  sim_timer.start();
+  using namespace fluid::util;
 
   timer([]{sim->advect_velocity();}, "advect_velocity");
   //sim->advect_velocity();
@@ -139,41 +120,101 @@ void update_fluid() {
   //sim->boundary();
 
   if (simulation_mode == MAP_FLUID_MODE) {
-    timer([]{std::dynamic_pointer_cast<fluid::MapFluid>(sim)->advect_map();}, "advect_map");
-    //timer([]{std::dynamic_pointer_cast<fluid::MapFluid>(sim)->advect_map_new();}, "advect_map_new", 1);
-    std::dynamic_pointer_cast<fluid::MapFluid>(sim)->advect_map();
+    timer([]{map_sim()->advect_map();}, "advect_map");
+    //map_sim()->advect_map();
   } else if (simulation_mode == INK_FLUID_MODE) {
-    timer([]{std::dynamic_pointer_cast<fluid::InkFluid>(sim)->advect_ink();}, "advect_ink");
-    //std::dynamic_pointer_cast<fluid::InkFluid>(sim)->advect_ink();
+    timer([]{ink_sim()->advect_ink();}, "advect_ink");
+    //ink_sim()->advect_ink();
   }
 }
 
-void display() {
-  // update phase
-  update_drag();
-  sim_timer([]{update_fluid();}, "AMOUNT OF FLUID SIM");
-  //update_fluid();
-
-  // update dst_img
+template<typename pixel>
+void get_dst_buf(png::solid_pixel_buffer<pixel>& dst_buf) {
   if (simulation_mode == MAP_FLUID_MODE) {
-    std::dynamic_pointer_cast<fluid::MapFluid>(sim)->mapping(src_img.get_pixbuf(), dst_img->get_pixbuf());
-  } else if (simulation_mode == INK_FLUID_MODE) {
-    std::dynamic_pointer_cast<fluid::InkFluid>(sim)->get_ink(dst_img->get_pixbuf());
-  }
+    auto src_buf = src_buf_seq[src_frame_number++];
+    map_sim()->mapping(src_buf, dst_buf);
 
-  // draw image
-  std::cout << "draw phase" << std::endl;
+    if (src_frame_number >= src_buf_seq.size()) {
+      src_frame_number = 0;
+    }
+  } else if (simulation_mode == INK_FLUID_MODE) {
+    ink_sim()->get_ink(dst_buf);
+  }
+}
+
+template<typename pixel>
+void save_dst_img(const png::solid_image<pixel>& dst_img) {
+  std::cout << "[info] saving frame:" << frame << std::endl;
+  std::string filename = dst_img_dir + "/frame-" + std::to_string(frame) + ".png";
+  std::thread th([](png::solid_image<pixel> dst_img, const std::string& filename){
+    dst_img.write(filename);
+    std::cout << "[info] saved:" << filename << std::endl;
+  }, dst_img, filename);
+
+  th.detach();
+  frame++;
+}
+
+void rendering(const GLvoid *dst_data) {
   glClearColor(1.0, 1.0, 1.0, 10.0);
   glClear(GL_COLOR_BUFFER_BIT);
-  glDrawPixels(width, height, GL_RGB, GL_UNSIGNED_BYTE, dst_img->get_pixbuf().get_bytes().data());
+  glDrawPixels(width, height, GL_RGB, GL_UNSIGNED_BYTE, dst_data);
   glFlush();
+}
 
-  // save frame
-  if (save_enable) {
-    dst_img->write("img_output/frame-" + std::to_string(frame++) + ".png");
-  }
+void display() {
+  using namespace fluid::util;
 
+  std::cout << "[info] calc fluid" << std::endl;
+
+  // update phase
+  update_drag();
+  fluid::util::timer([]{update_fluid();}, "AMOUNT OF FLUID SIM");
+  //update_fluid();
+
+  std::cout << "[info] draw phase" << std::endl;
+
+  // init dst img
+  timer([]{get_dst_buf(dst_img_ptr->get_pixbuf());}, "AMOUNT OF GET DST IMG", 1, false);
+  //get_dst_buf(dst_img.get_pixbuf());
+  timer([]{if (save_enable) save_dst_img(*dst_img_ptr);}, "AMOUNT OF SAVING", 1, false);
+  //if (save_enable) save_dst_img(dst_img);
+
+  // rendering
+  timer([]{rendering(dst_img_ptr->get_pixbuf().get_bytes().data());}, "AMOUNT OF RENDERING", 1, false);
+  //rendering(dst_img.get_pixbuf().get_bytes().data());
   glutPostRedisplay();
+}
+
+void load_png_seq(std::string prefix) {
+  namespace fs = std::filesystem;
+
+  // unify separator
+  char separator = (char) fs::path::preferred_separator;
+  std::replace(prefix.begin(), prefix.end(), '/', separator);
+  std::replace(prefix.begin(), prefix.end(), '\\', separator);
+
+  fs::path p(prefix);
+  fs::path dir = p.parent_path();
+
+  // escape
+  std::regex esc(R"([\\*\+\.\?\|\{\}\(\)\[\]\^\$\-])");
+  auto prefix_esc = std::regex_replace(p.string(), esc, "\\$&");
+
+  // find file
+  std::regex seq_file(prefix_esc + "[0-9]*\\.png");
+  fs::directory_iterator iter(dir), end;
+  std::error_code err;
+  for (; iter != end && !err; iter.increment(err)) {
+    std::string filename = iter->path().string();
+
+    if (std::regex_match(filename, seq_file)) {
+      png::image<png::rgb_pixel> src_img(filename);
+      src_buf_seq.push_back(src_img.get_pixbuf());
+
+      std::cout << "[info] load: " << filename << std::endl;
+    }
+  }
 }
 
 int main(int argc, char *argv[]) {
@@ -183,11 +224,11 @@ int main(int argc, char *argv[]) {
   opt.add_options()
     ("help,H", "Print help message")
     ("save,s", "Save destination image")
-    ("width,w", value<int>()->default_value(1440), "Window width")
-    ("height,h", value<int>()->default_value(1080), "Window height")
+    ("sequence", "Use png sequence file for source image")
+    ("src_img", value<std::string>()->default_value("image"), "Source image")
+    ("dst_img", value<std::string>()->default_value("image"), "Destination image")
     ("scale_x", value<float>()->default_value(0.5f), "Field x scale")
     ("scale_y", value<float>()->default_value(0.5f), "Field y scale")
-    ("src_img", value<std::string>()->default_value("20191028.png"), "Source image")
     ("mode,m", value<std::string>()->default_value("Map"), "Simulation mode")
     ("init_from_src", "Init ink from source image (Only Ink Fluid)")
     ("noise_amp", value<float>()->default_value(10), "Perlin noise amplitude")
@@ -218,19 +259,31 @@ int main(int argc, char *argv[]) {
     // select save enable or disable
     save_enable = map.count("save");
 
+    std::string src_img_prefix = map["src_img"].as<std::string>();
+    if (map.count("sequence")) {
+      // load source image sequence
+      load_png_seq(src_img_prefix);
+      if (src_buf_seq.empty()) {
+        std::cout << "[error] source image sequence was not exist." << std::endl;
+
+        return -1;
+      }
+    } else {
+      // load source image
+      std::string filename = src_img_prefix + ".png";
+      png::image<png::rgb_pixel> src_img(filename);
+      src_buf_seq.push_back(src_img.get_pixbuf());
+
+      std::cout << "[info] load: " << filename << std::endl;
+    }
+
     // set width and height
-    width = map["width"].as<int>();
-    height = map["height"].as<int>();
+    width = src_buf_seq[0].get_width();
+    height = src_buf_seq[0].get_height();
 
     // set scale_x and scale_y
     scale_x = map["scale_x"].as<float>();
     scale_y = map["scale_y"].as<float>();
-
-    // load source image
-    src_img.read(map["src_img"].as<std::string>());
-
-    // init destination image
-    dst_img = std::make_shared<png::solid_image<png::rgb_pixel>>(width, height);
 
     // fluid property
     float dt = map["delta_t"].as<float>();
@@ -252,7 +305,8 @@ int main(int argc, char *argv[]) {
 
       // init ink from image
       if (map.count("init_from_src")) {
-        std::dynamic_pointer_cast<fluid::InkFluid>(sim)->set_ink(src_img.get_pixbuf());
+        auto src_buf = src_buf_seq[0];
+        ink_sim()->set_ink(src_buf);
       }
     } else {
       std::cout << "[error] mode \"" << mode_name << "\" was not exist." << std::endl;
@@ -266,6 +320,23 @@ int main(int argc, char *argv[]) {
     // set fluid velocity
     float vel[] = {map["vel_x"].as<float>(), map["vel_y"].as<float>()};
     fluid::Fluid::accelerate_by_single_vector(*sim, vel);
+
+    // init destination image
+    dst_img_ptr = std::make_shared<png::solid_image<png::rgb_pixel>>(width, height);
+    if (save_enable) {
+      namespace fs = std::filesystem;
+
+      // set destination image filename
+      dst_img_dir = map["dst_img"].as<std::string>();
+
+      fs::path dir(dst_img_dir);
+      if (!fs::exists(dir)) {
+        // create directory
+        fs::create_directories(dir);
+
+        std::cout << "[info] create directories: " << dir << std::endl;
+      }
+    }
   } catch (const boost::bad_any_cast& e) {
     std::cout << "[error] " << e.what() << std::endl;
 
