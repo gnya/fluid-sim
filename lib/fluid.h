@@ -56,11 +56,11 @@ namespace fluid {
 
     void diffuse(int n_jacob) {
       const float a = (float) pow(_dx, 2) / (_v * _dt);
-      const float r_b = 1.0f / (4 + a);
+      const float b_inv = 1.0f / (4 + a);
 
       for (int i = 0; i < n_jacob / 2; i++) {
-        math::jacobi2f(_w, _w_tmp, _w, a, r_b, _m, _n);
-        math::jacobi2f(_w_tmp, _w, _w_tmp, a, r_b, _m, _n);
+        math::jacobi2f(_w, _w_tmp, _w, a, b_inv, _m, _n);
+        math::jacobi2f(_w_tmp, _w, _w_tmp, a, b_inv, _m, _n);
       }
     }
 
@@ -70,13 +70,13 @@ namespace fluid {
 
     void projection(int n_jacob) {
       const float a = - (float) pow(_dx, 2);
-      const float r_b = 1.0f / 4;
+      const float b_inv = 1.0f / 4;
 
       math::divergence2f(_w, _w_div, _dx, _m, _n);
 
       for (int i = 0; i < n_jacob / 2; i++) {
-        math::jacobi1f(_p, _p_tmp, _w_div, a, r_b, _m, _n);
-        math::jacobi1f(_p_tmp, _p, _w_div, a, r_b, _m, _n);
+        math::jacobi1f(_p, _p_tmp, _w_div, a, b_inv, _m, _n);
+        math::jacobi1f(_p_tmp, _p, _w_div, a, b_inv, _m, _n);
       }
 
       math::gradient2f(_p, _w, _u, _dx, _m, _n);

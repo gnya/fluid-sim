@@ -94,9 +94,9 @@ void key(unsigned char key, int x, int y) {
 void update_fluid() {
   using namespace fluid::util;
 
-  timer([]{sim->advect_velocity();}, "advect_velocity");
+  timer([]{sim->advect_velocity();}, "advect_velocity", 1, false);
   //sim->advect_velocity();
-  timer([]{sim->diffuse(20);}, "diffuse");
+  timer([]{sim->diffuse(20);}, "diffuse", 1, false);
   //sim->diffuse(20);
   if (mouse_pressed) {
     // add force
@@ -109,21 +109,25 @@ void update_fluid() {
       // nothing to do
     } else if (simulation_mode == INK_FLUID_MODE) {
       // draw point
-      /*float color[] = {255, 255, 255};
-      float c_pos[] = {mouse_pos[0], mouse_pos[1]};
-      sim.add_color(c_pos, color, 100);*/
+      float color[] = {
+          mouse_button == GLUT_LEFT_BUTTON ? 255.0f * 10 : 0,
+          mouse_button == GLUT_RIGHT_BUTTON ? 255.0f * 10 : 0
+      };
+      float pos[] = {mouse_pos[0], mouse_pos[1]};
+      timer([&]{ink_sim()->add_ink(pos, color, 100);}, "add_ink");
+      //ink_sim()->add_ink(pos, color, 100);
     }
   }
-  timer([]{sim->projection(40);}, "projection");
+  timer([]{sim->projection(40);}, "projection", 1, false);
   //sim->projection(40);
-  timer([]{sim->boundary();}, "boundary");
+  timer([]{sim->boundary();}, "boundary", 1, false);
   //sim->boundary();
 
   if (simulation_mode == MAP_FLUID_MODE) {
-    timer([]{map_sim()->advect_map();}, "advect_map");
+    timer([]{map_sim()->advect_map();}, "advect_map", 1, false);
     //map_sim()->advect_map();
   } else if (simulation_mode == INK_FLUID_MODE) {
-    timer([]{ink_sim()->advect_ink();}, "advect_ink");
+    timer([]{ink_sim()->advect_ink();}, "advect_ink", 1, false);
     //ink_sim()->advect_ink();
   }
 }

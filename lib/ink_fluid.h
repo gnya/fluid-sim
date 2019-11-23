@@ -38,7 +38,11 @@ namespace fluid {
 
     void advect_ink() {
       math::advect_scaled2f(_ink, _ink_tmp, _u, _dt, _dx, _width, _height, _m, _n);
-      memcpy(_ink, _ink_tmp, _width * _height * 2 * sizeof(float));
+      std::swap(_ink, _ink_tmp);
+    }
+
+    void add_ink(float pos[2], float c[2], float r) {
+      math::brush2f(_ink, pos, c, r, _dt, _width, _height);
     }
 
     template<typename pixel>
@@ -52,8 +56,8 @@ namespace fluid {
   void InkFluid::set_ink(const png::pixel_buffer<png::rgb_pixel> &src) {
     for (int j = 0; j < _height; j++) {
       for (int i = 0; i < _width; i++) {
-        _ink[util::at2_x(_width, i, j)] = src[j][i].red;
-        _ink[util::at2_y(_width, i, j)] = src[j][i].green;
+        _ink[util::at2_x(_width, i, j)] = src[_height - j - 1][i].red;
+        _ink[util::at2_y(_width, i, j)] = src[_height - j - 1][i].green;
       }
     }
   }

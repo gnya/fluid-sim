@@ -5,7 +5,7 @@ project(fluid_sim)
 enable_language(CXX)
 set(CMAKE_CXX_STANDARD 17)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -mavx")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -mavx2")
 
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
@@ -23,5 +23,5 @@ include_directories(${PNG_INCLUDE_DIR})
 include_directories(${BOOST_INCLUDE_DIR})
 include_directories("${PROJECT_SOURCE_DIR}/lib/")
 
-add_executable(fluid_sim main.cpp lib/fluid.h lib/map_fluid.h lib/math/noise.h lib/ink_fluid.h lib/math/advect.h lib/math/util.h lib/math/math.h lib/math/jacobi.h lib/math/divergence.h lib/math/gradient.h)
+add_executable(fluid_sim main.cpp)
 target_link_libraries(fluid_sim Threads::Threads PNG::PNG GLUT::GLUT OpenGL::GL ${Boost_LIBRARIES})
