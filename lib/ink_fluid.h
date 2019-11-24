@@ -18,6 +18,7 @@ namespace fluid {
 
     float *_ink{};
     float *_ink_tmp{};
+    float *_ink_src{};
   public:
     InkFluid() = default;
 
@@ -28,21 +29,27 @@ namespace fluid {
 
       _ink     = new (std::align_val_t{32}) float[width * height * 2];
       _ink_tmp = new (std::align_val_t{32}) float[width * height * 2];
+      _ink_src = new (std::align_val_t{32}) float[width * height * 2];
     }
 
     ~InkFluid() override {
       std::cout << "[MEM RELEASE] ink fluid" << std::endl;
       delete[] _ink;
       delete[] _ink_tmp;
+      delete[] _ink_src;
     }
 
     void advect_ink() {
-      math::advect_scaled2f(_ink, _ink_tmp, _u, _dt, _dx, _width, _height, _m, _n);
-      std::swap(_ink, _ink_tmp);
+      math::advect_scaled2f(_ink, _u, _ink_tmp, _dt, _dx, _width, _height, _m, _n);
+      math::add2f(_ink_tmp, _ink_src, _ink, _width, _height, 0, 255);
     }
 
     void add_ink(float pos[2], float c[2], float r) {
       math::brush2f(_ink, pos, c, r, _dt, _width, _height);
+    }
+
+    void add_ink_src(float pos[2], float c[2], float r) {
+      math::brush2f(_ink_src, pos, c, r, _dt, _width, _height);
     }
 
     template<typename pixel>

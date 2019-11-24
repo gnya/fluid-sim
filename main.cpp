@@ -109,13 +109,16 @@ void update_fluid() {
       // nothing to do
     } else if (simulation_mode == INK_FLUID_MODE) {
       // draw point
-      float color[] = {
-          mouse_button == GLUT_LEFT_BUTTON ? 255.0f * 10 : 0,
-          mouse_button == GLUT_RIGHT_BUTTON ? 255.0f * 10 : 0
-      };
       float pos[] = {mouse_pos[0], mouse_pos[1]};
-      timer([&]{ink_sim()->add_ink(pos, color, 100);}, "add_ink");
-      //ink_sim()->add_ink(pos, color, 100);
+      if (mouse_button == GLUT_LEFT_BUTTON) {
+        float color[] = {255.0f * 5.0f, 255.0f * 0};
+        timer([&]{ink_sim()->add_ink(pos, color, 100);}, "add_ink");
+        //ink_sim()->add_ink(pos, color, 100);
+      } else if (mouse_button == GLUT_RIGHT_BUTTON) {
+        float color[] = {255.0f * 0, 255.0f * 0.01f};
+        timer([&]{ink_sim()->add_ink_src(pos, color, 100);}, "add_ink_src");
+        //ink_sim()->add_ink(pos, color, 100);
+      }
     }
   }
   timer([]{sim->projection(40);}, "projection", 1, false);
@@ -319,11 +322,11 @@ int main(int argc, char *argv[]) {
     }
 
     // set perlin noise amplitude
-    fluid::Fluid::accelerate_by_perlin_noise(*sim, 0, 1, map["noise_amp"].as<float>());
+    fluid::util::timer([&]{fluid::Fluid::accelerate_by_perlin_noise(*sim, 0, 1, map["noise_amp"].as<float>());}, "accelerate by perlin noise");
 
     // set fluid velocity
     float vel[] = {map["vel_x"].as<float>(), map["vel_y"].as<float>()};
-    fluid::Fluid::accelerate_by_single_vector(*sim, vel);
+    fluid::util::timer([&]{fluid::Fluid::accelerate_by_single_vector(*sim, vel);}, "accelerate by single vector");
 
     // init destination image
     dst_img_ptr = std::make_shared<png::solid_image<png::rgb_pixel>>(width, height);

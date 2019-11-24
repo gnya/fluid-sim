@@ -6,17 +6,28 @@
 #ifndef FLUID_MATH_UTIL_H
 #define FLUID_MATH_UTIL_H
 
+#include <chrono>
+
 namespace fluid::util {
   template<class Process>
   void timer(Process p, const char* prefix, int loop = 1, bool enable = true) {
-    using namespace std;
+    using namespace std::chrono;
 
-    clock_t bgn = clock();
+    auto bgn = high_resolution_clock::now();
     for (int i = 0; i < loop; i++) p();
-    clock_t end = clock();
-    double t = (double) (end - bgn) / CLOCKS_PER_SEC * 1000;
+    auto end = high_resolution_clock::now();
+    auto t = duration_cast<nanoseconds>(end - bgn).count() / 1000.0f;
 
-    if (enable) cout << "[debug] (" << prefix << ") time: " << t << "ms" << endl;
+    if (enable) {
+      std::cout << "[debug] (" << prefix << ") time: ";
+      if (t < 1000.0f) {
+        std::cout << t << "ns" << std::endl;
+      } else if (t / 1000.0f < 1000.0f) {
+        std::cout << t / 1000.0f << "ms" << std::endl;
+      } else {
+        std::cout << t / 1000.0f / 1000.0f << "s" << std::endl;
+      }
+    }
   }
 
   inline int at(int m, int i, int j) {
@@ -66,6 +77,16 @@ namespace fluid::util {
   }
 
   namespace avx {
+    void show_m128i(__m128i v, const char* prefix) {
+      __attribute__((aligned(32))) int t[4] = {0};
+      _mm_store_si128((__m128i*) t, v);
+
+      std::cout << "[debug] (" << prefix << ")";
+      std::cout << " 0:" << t[0] << " 1:" << t[1];
+      std::cout << " 2:" << t[2] << " 3:" << t[3];
+      std::cout << std::endl;
+    }
+
     void show_m128(__m128 v, const char* prefix) {
       __attribute__((aligned(32))) float t[4] = {0};
       _mm_store_ps(t, v);
@@ -88,7 +109,34 @@ namespace fluid::util {
       std::cout << std::endl;
     }
 
-    inline __m256 load_m256_2f(float *x) {
+    inline __m256 set_m256_2f(float v[2]) {
+      return _mm256_set_ps(v[1], v[0], v[1], v[0], v[1], v[0], v[1], v[0]);
+    }
+
+    inline __m256 clip_m256(__m256 x, __m256 min, __m256 max) {
+      return _mm256_min_ps(_mm256_max_ps(x, min), max);
+    }
+
+    namespace lerp_func {
+      inline __m128 quintic(__m128 x) {
+        // y = 6 * x ^ 5 - 15 * t ^ 4 + 10 * x ^ 3;
+        __m128 x3 = _mm_mul_ps(_mm_mul_ps(x, x), x);
+        __m128 x4 = _mm_mul_ps(x3, x);
+        __m128 x5 = _mm_mul_ps(x4, x);
+        x3 = _mm_mul_ps(x3, _mm_set1_ps(10));
+        x4 = _mm_mul_ps(x4, _mm_set1_ps(15));
+        x5 = _mm_mul_ps(x5, _mm_set1_ps(6));
+
+        return _mm_add_ps(x3, _mm_sub_ps(x5, x4));
+      }
+    }
+
+    inline __m128 lerp(__m128 a, __m128 b, __m128 t, __m128 (*f)(__m128)) {
+      // y = a + (b - a) * f(t);
+      return _mm_add_ps(a, _mm_mul_ps(_mm_sub_ps(b, a), f(t)));
+    }
+
+    inline __m256 load_m256_2f(const float *x) {
       __m256 x0 = _mm256_loadu_ps(x + 0);
       __m256 x1 = _mm256_loadu_ps(x + 8);
       __m256 x2 = _mm256_permute2f128_ps(x1, x0, 0b11);
@@ -132,8 +180,7 @@ namespace fluid::util {
       const __m256i _0x7f = _mm256_set1_epi32(0x7f);
 
       // clip x
-      x = _mm256_min_ps(x, _exp_hi);
-      x = _mm256_max_ps(x, _exp_lo);
+      x = clip_m256(x, _exp_lo, _exp_hi);
 
       // exp(x) = exp(g + n * ln2) = exp(g) * 2 ^ n
       // n <- round(g / ln2 + n) , (|z / ln2| < 1)

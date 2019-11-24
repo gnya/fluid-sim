@@ -7,7 +7,7 @@
 #define FLUID_MATH_DIVERGENCE_H
 
 namespace fluid::math {
-  inline void divergence_avx_step2f(float *x, float *x_div, __m256 dx_half, int m) {
+  inline void divergence_avx_step2f(const float *x, float *x_div, __m256 dx_half, int m) {
     using namespace util::avx;
 
     __m256 x0 = load_m256_2f(x + 1 * 2 + 0); // x[i + 1, j].x
@@ -19,7 +19,7 @@ namespace fluid::math {
     _mm256_storeu_ps(x_div, _mm256_mul_ps(tmp, dx_half));
   }
 
-  inline void divergence_step2f(float *x, float *x_div, float dx_half, int m,
+  inline void divergence_step2f(const float *x, float *x_div, float dx_half, int m,
                                 int c_l = 1, int c_r = 1, int c_b = 1, int c_t = 1) {
     float x0 = *(x + 1 * 2 * c_r + 0); // x[i + 1, j].x
     float x1 = *(x - 1 * 2 * c_l + 0); // x[i - 1, j].x
@@ -30,7 +30,7 @@ namespace fluid::math {
     *x_div = ((x0 - x1) + (y0 - y1)) * dx_half;
   }
 
-  void divergence2f(float *x, float *x_div, float dx, int m, int n) {
+  void divergence2f(const float *x, float *x_div, float dx, int m, int n) {
     const float dx_half = dx / 2;
     const __m256 _dx_half = _mm256_set1_ps(dx_half);
     auto i_parallel_end = (m - 1) - (m - 2) % 8;

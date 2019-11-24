@@ -7,7 +7,7 @@
 #define FLUID_MATH_JACOBI_H
 
 namespace fluid::math {
-  inline void jacobi_avx_step(float *x, float *x_new, float *b,
+  inline void jacobi_avx_step(const float *x, const float *b, float *x_new,
                               __m256 a, __m256 b_inv, int m, int dim) {
     __m256 tmp;
 
@@ -21,7 +21,7 @@ namespace fluid::math {
     _mm256_storeu_ps(x_new, tmp);
   }
 
-  inline void jacobi_step1f(float *x, float *x_new, float *b,
+  inline void jacobi_step1f(const float *x, const float *b, float *x_new,
                             float a, float b_inv, int m,
                             int c_l = 1, int c_r = 1, int c_b = 1, int c_t = 1) {
     float x00 = *(x - m * c_b); // x[i, j - 1]
@@ -34,7 +34,7 @@ namespace fluid::math {
     *x_new = (x00 + x01 + x10 + x11 + b_a) * b_inv;
   }
 
-  void jacobi1f(float *x, float *x_new, float *b,
+  void jacobi1f(const float *x, const float *b, float *x_new,
                 float a, float b_inv, int m, int n) {
     const __m256 _a = _mm256_set1_ps(a);
     const __m256 _b_inv = _mm256_set1_ps(b_inv);
@@ -44,12 +44,12 @@ namespace fluid::math {
     for (int j = 1; j < n - 1; ++j) {
       for (int i = 1; i < i_parallel_end; i += 8) {
         int idx = util::at(m, i, j);
-        jacobi_avx_step(&x[idx], &x_new[idx], &b[idx], _a, _b_inv, m, 1);
+        jacobi_avx_step(&x[idx], &b[idx], &x_new[idx], _a, _b_inv, m, 1);
       }
 
       for (int i = i_parallel_end; i < m - 1; ++i) {
         int idx = util::at(m, i, j);
-        jacobi_step1f(&x[idx], &x_new[idx], &b[idx], a, b_inv, m);
+        jacobi_step1f(&x[idx], &b[idx], &x_new[idx], a, b_inv, m);
       }
     }
 
@@ -57,20 +57,20 @@ namespace fluid::math {
       int idx_l = util::at(m, 0, j); // left boundary
       int idx_r = util::at(m, m - 1, j); // right boundary
 
-      jacobi_step1f(&x[idx_l], &x_new[idx_l], &b[idx_l], a, b_inv, m, 0, 1, 1, 1);
-      jacobi_step1f(&x[idx_r], &x_new[idx_r], &b[idx_r], a, b_inv, m, 1, 0, 1, 1);
+      jacobi_step1f(&x[idx_l], &b[idx_l], &x_new[idx_l], a, b_inv, m, 0, 1, 1, 1);
+      jacobi_step1f(&x[idx_r], &b[idx_r], &x_new[idx_r], a, b_inv, m, 1, 0, 1, 1);
     }
 
     for (int i = 1; i < m - 1; ++i) {
       int idx_b = util::at(m, i, 0); // bottom boundary
       int idx_t = util::at(m, i, n - 1); // top boundary
 
-      jacobi_step1f(&x[idx_b], &x_new[idx_b], &b[idx_b], a, b_inv, m, 1, 1, 0, 1);
-      jacobi_step1f(&x[idx_t], &x_new[idx_t], &b[idx_t], a, b_inv, m, 1, 1, 1, 0);
+      jacobi_step1f(&x[idx_b], &b[idx_b], &x_new[idx_b], a, b_inv, m, 1, 1, 0, 1);
+      jacobi_step1f(&x[idx_t], &b[idx_t], &x_new[idx_t], a, b_inv, m, 1, 1, 1, 0);
     }
   }
 
-  inline void jacobi_step2f(float *x, float *x_new, float *b,
+  inline void jacobi_step2f(const float *x, const float *b, float *x_new,
                             float a, float b_inv, int m,
                             int c_l = 1, int c_r = 1, int c_b = 1, int c_t = 1) {
     float x00_x = *(x - 2 * m * c_b + 0); // x[i, j - 1].x
@@ -90,7 +90,7 @@ namespace fluid::math {
     *(x_new + 1) = (x00_y + x01_y + x10_y + x11_y + b_y_a) * b_inv;
   }
 
-  void jacobi2f(float *x, float *x_new, float *b,
+  void jacobi2f(const float *x, const float *b, float *x_new,
                 float a, float b_inv, int m, int n) {
     const __m256 _a = _mm256_set1_ps(a);
     const __m256 _b_inv = _mm256_set1_ps(b_inv);
@@ -100,12 +100,12 @@ namespace fluid::math {
     for (int j = 1; j < n - 1; ++j) {
       for (int i = 1; i < i_parallel_end; i += 4) {
         int idx = util::at2_x(m, i, j);
-        jacobi_avx_step(&x[idx], &x_new[idx], &b[idx], _a, _b_inv, m, 2);
+        jacobi_avx_step(&x[idx], &b[idx], &x_new[idx], _a, _b_inv, m, 2);
       }
 
       for (int i = i_parallel_end; i < m - 1; ++i) {
         int idx = util::at2_x(m, i, j);
-        jacobi_step2f(&x[idx], &x_new[idx], &b[idx], a, b_inv, m);
+        jacobi_step2f(&x[idx], &b[idx], &x_new[idx], a, b_inv, m);
       }
     }
 
@@ -113,16 +113,16 @@ namespace fluid::math {
       int idx_l = util::at2_x(m, 0, j); // left boundary
       int idx_r = util::at2_x(m, m - 1, j); // right boundary
 
-      jacobi_step2f(&x[idx_l], &x_new[idx_l], &b[idx_l], a, b_inv, m, 0, 1, 1, 1);
-      jacobi_step2f(&x[idx_r], &x_new[idx_r], &b[idx_r], a, b_inv, m, 1, 0, 1, 1);
+      jacobi_step2f(&x[idx_l], &b[idx_l], &x_new[idx_l], a, b_inv, m, 0, 1, 1, 1);
+      jacobi_step2f(&x[idx_r], &b[idx_r], &x_new[idx_r], a, b_inv, m, 1, 0, 1, 1);
     }
 
     for (int i = 1; i < m - 1; ++i) {
       int idx_b = util::at2_x(m, i, 0); // bottom boundary
       int idx_t = util::at2_x(m, i, n - 1); // top boundary
 
-      jacobi_step2f(&x[idx_b], &x_new[idx_b], &b[idx_b], a, b_inv, m, 1, 1, 0, 1);
-      jacobi_step2f(&x[idx_t], &x_new[idx_t], &b[idx_t], a, b_inv, m, 1, 1, 1, 0);
+      jacobi_step2f(&x[idx_b], &b[idx_b], &x_new[idx_b], a, b_inv, m, 1, 1, 0, 1);
+      jacobi_step2f(&x[idx_t], &b[idx_t], &x_new[idx_t], a, b_inv, m, 1, 1, 1, 0);
     }
   }
 }

@@ -9,7 +9,7 @@
 #include <ctgmath>
 
 namespace fluid::math {
-  void advect_scaled2f(float *q, float *q_new, float *u,
+  void advect_scaled2f(const float *q, const float *u, float *q_new,
                        float dt, float dx, int q_m, int q_n, int u_m, int u_n) {
     using namespace util;
 
@@ -38,7 +38,7 @@ namespace fluid::math {
         bool c_j = j_min + dq_j >= 0 && j_max + dq_j < q_n - 1;
 
         if (c_i && c_j) {
-          float *q_ptr = &q[at2_x(q_m, i_min + dq_i, j_min + dq_j)];
+          const float *q_ptr = &q[at2_x(q_m, i_min + dq_i, j_min + dq_j)];
           float *q_new_ptr = &q_new[at2_x(q_m, i_min, j_min)];
 
           for (int j = 0; j < j_max - j_min; j++) {
@@ -56,7 +56,7 @@ namespace fluid::math {
             for (int i = i_min; i < i_max; i++) {
               int q_i = std::max(0, std::min(i + dq_i, q_m - 2));
 
-              float *q_ptr = &q[at2_x(q_m, q_i, q_j)];
+              const float *q_ptr = &q[at2_x(q_m, q_i, q_j)];
               float *q_new_ptr = &q_new[at2_x(q_m, i, j)];
 
               lerp2d2f(q_ptr, q_new_ptr, dec_x, dec_y, q_m);
@@ -67,7 +67,7 @@ namespace fluid::math {
     }
   }
 
-  void advect2f(float *q, float *q_new, float *u,
+  void advect2f(const float *q, const float *u, float *q_new,
                 float dt, float dx, int m, int n) {
     using namespace util;
 

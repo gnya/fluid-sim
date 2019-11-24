@@ -7,7 +7,7 @@
 #define FLUID_MATH_GRADIENT_H
 
 namespace fluid::math {
-  inline void gradient_avx_step2f(float *p, float *w, float *u, __m128 dx_half, int m) {
+  inline void gradient_avx_step2f(const float *p, const float *w, float *u, __m128 dx_half, int m) {
     using namespace util::avx;
 
     __m256 w_term = _mm256_loadu_ps(w); // w[i, j]
@@ -23,7 +23,7 @@ namespace fluid::math {
     _mm256_storeu_ps(u, _mm256_sub_ps(w_term, p_term));
   }
 
-  inline void gradient_step2f(float *p, float *w, float *u, float dx_half, int m,
+  inline void gradient_step2f(const float *p, const float *w, float *u, float dx_half, int m,
                               int c_l = 1, int c_r = 1, int c_b = 1, int c_t = 1) {
     float w_x = *(w + 0); // w[i, j].x
     float w_y = *(w + 1); // w[i, j].y
@@ -39,7 +39,7 @@ namespace fluid::math {
     *(u + 1) = w_y - (p_y0 - p_y1) * dx_half;
   }
 
-  void gradient2f(float *p, float *w, float *u, float dx, int m, int n) {
+  void gradient2f(const float *p, const float *w, float *u, float dx, int m, int n) {
     const float dx_half = dx / 2;
     const __m128 _dx_half = _mm_set1_ps(dx_half);
     auto i_parallel_end = (m - 1) - (m - 2) % 4;

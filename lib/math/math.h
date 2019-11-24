@@ -7,11 +7,13 @@
 #define FLUID_MATH_H
 
 #include "util.h"
+#include "noise.h"
 #include "advect.h"
 #include "jacobi.h"
 #include "divergence.h"
 #include "gradient.h"
-#include "noise.h"
+
+#include <limits>
 
 namespace fluid::math {
   inline void brush_step2f(float *x, __m256 i, __m256 j, __m256 p_idx_x, __m256 p_idx_y,
@@ -32,14 +34,13 @@ namespace fluid::math {
   void brush2f(float *x, float p_idx[2], float v[2], float r, float dt, int m, int n) {
     using namespace util;
 
-    const __m256 _v = _mm256_set_ps(v[1], v[0], v[1], v[0], v[1], v[0], v[1], v[0]);
+    const __m256 _v = avx::set_m256_2f(v);
     const __m256 _p_idx_x = _mm256_set1_ps(p_idx[0]);
     const __m256 _p_idx_y = _mm256_set1_ps(p_idx[1]);
     const __m256 _r_inv = _mm256_set1_ps(-1 / r);
     const __m256 _dt = _mm256_set1_ps(dt);
     const __m256 _vdt = _mm256_mul_ps(_v, _dt);
     const __m256 _idx = _mm256_set_ps(3, 3, 2, 2, 1, 1, 0, 0);
-
     auto i_parallel_end = m - m % 4;
 
     for (int j = 0; j < n; ++j) {
@@ -64,7 +65,7 @@ namespace fluid::math {
   void left_boundary2f(float *p, float *u, int m, int n) {
     using namespace util;
 
-    for (int j = 1; j < n - 1; j++) {
+    for (int j = 1; j < n - 1; ++j) {
       p[at(m, 0, j)] = p[at(m, 0 + 1, j)];
       u[at2_x(m, 0, j)] = -u[at2_x(m, 0 + 1, j)];
       u[at2_y(m, 0, j)] = -u[at2_y(m, 0 + 1, j)];
@@ -74,7 +75,7 @@ namespace fluid::math {
   void right_boundary2f(float *p, float *u, int m, int n) {
     using namespace util;
 
-    for (int j = 1; j < n - 1; j++) {
+    for (int j = 1; j < n - 1; ++j) {
       p[at(m, m - 1, j)] = p[at(m, m - 1 - 1, j)];
       u[at2_x(m, m - 1, j)] = -u[at2_x(m, m - 1 - 1, j)];
       u[at2_y(m, m - 1, j)] = -u[at2_y(m, m - 1 - 1, j)];
@@ -84,7 +85,7 @@ namespace fluid::math {
   void bottom_boundary2f(float *p, float *u, int m, int n) {
     using namespace util;
 
-    for (int i = 1; i < m - 1; i++) {
+    for (int i = 1; i < m - 1; ++i) {
       p[at(m, i, 0)] = p[at(m, i, 0 + 1)];
       u[at2_x(m, i, 0)] = -u[at2_x(m, i, 0 + 1)];
       u[at2_y(m, i, 0)] = -u[at2_y(m, i, 0 + 1)];
@@ -94,10 +95,33 @@ namespace fluid::math {
   void top_boundary2f(float *p, float *u, int m, int n) {
     using namespace util;
 
-    for (int i = 1; i < m - 1; i++) {
+    for (int i = 1; i < m - 1; ++i) {
       p[at(m, i, n - 1)] = p[at(m, i, n - 1 - 1)];
       u[at2_x(m, i, n - 1)] = -u[at2_x(m, i, n - 1 - 1)];
       u[at2_y(m, i, n - 1)] = -u[at2_y(m, i, n - 1 - 1)];
+    }
+  }
+
+  void add2f(const float *x, const float *y, float *x_new, int m, int n,
+             float min = std::numeric_limits<float>::min(),
+             float max = std::numeric_limits<float>::max()) {
+    using namespace util;
+
+    const __m256 _min = _mm256_set1_ps(min);
+    const __m256 _max = _mm256_set1_ps(max);
+
+    auto i_parallel_end = (m * n * 2) - (m * n * 2) % 8;
+
+    for (int i = 0; i < i_parallel_end; i += 8) {
+      __m256 x_4 = _mm256_loadu_ps(&x[i]);
+      __m256 y_4 = _mm256_loadu_ps(&y[i]);
+      __m256 z_4 = _mm256_add_ps(x_4, y_4);
+
+      _mm256_storeu_ps(&x_new[i], avx::clip_m256(z_4, _min, _max));
+    }
+
+    for (int i = i_parallel_end; i < m * n * 2; ++i) {
+      x_new[i] = std::max(min, std::min(x[i] + y[i], max));
     }
   }
 }

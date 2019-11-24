@@ -44,7 +44,7 @@ namespace fluid {
     }
 
     void advect_map() {
-      math::advect_scaled2f(_map, _map_tmp, _u, _dt, _dx, _width, _height, _m, _n);
+      math::advect_scaled2f(_map, _u, _map_tmp, _dt, _dx, _width, _height, _m, _n);
       std::swap(_map, _map_tmp);
     }
 

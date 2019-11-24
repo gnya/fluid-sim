@@ -51,7 +51,7 @@ namespace fluid {
     }
 
     void advect_velocity() {
-      math::advect2f(_u, _w, _u, _dt, _dx, _m, _n);
+      math::advect2f(_u, _u, _w, _dt, _dx, _m, _n);
     }
 
     void diffuse(int n_jacob) {
@@ -59,8 +59,8 @@ namespace fluid {
       const float b_inv = 1.0f / (4 + a);
 
       for (int i = 0; i < n_jacob / 2; i++) {
-        math::jacobi2f(_w, _w_tmp, _w, a, b_inv, _m, _n);
-        math::jacobi2f(_w_tmp, _w, _w_tmp, a, b_inv, _m, _n);
+        math::jacobi2f(_w, _w, _w_tmp, a, b_inv, _m, _n);
+        math::jacobi2f(_w_tmp, _w_tmp, _w, a, b_inv, _m, _n);
       }
     }
 
@@ -75,8 +75,8 @@ namespace fluid {
       math::divergence2f(_w, _w_div, _dx, _m, _n);
 
       for (int i = 0; i < n_jacob / 2; i++) {
-        math::jacobi1f(_p, _p_tmp, _w_div, a, b_inv, _m, _n);
-        math::jacobi1f(_p_tmp, _p, _w_div, a, b_inv, _m, _n);
+        math::jacobi1f(_p, _w_div, _p_tmp, a, b_inv, _m, _n);
+        math::jacobi1f(_p_tmp, _w_div, _p, a, b_inv, _m, _n);
       }
 
       math::gradient2f(_p, _w, _u, _dx, _m, _n);
@@ -118,20 +118,8 @@ namespace fluid {
     }
   }
 
-  void Fluid::accelerate_by_perlin_noise(Fluid &f, int x_seed, int y_seed,
-                                         float amplitude, float scale) {
-    math::noise::OctavePerlinNoise x_noise(x_seed);
-    math::noise::OctavePerlinNoise y_noise(y_seed);
-
-    for (int j = 0; j < f._n; j++) {
-      for (int i = 0; i < f._m; i++) {
-        float x_n = x_noise(i * scale, j * scale);
-        float y_n = y_noise(i * scale, j * scale);
-
-        f._u[util::at2_x(f._m, i, j)] += (x_n * 2 - 1) * amplitude;
-        f._u[util::at2_y(f._m, i, j)] += (y_n * 2 - 1) * amplitude;
-      }
-    }
+  void Fluid::accelerate_by_perlin_noise(Fluid &f, int seed_x, int seed_y, float amp, float scale) {
+    math::noise::add_noise2f(f._u, f._m, f._n, seed_x, seed_y, amp, scale);
   }
 }
 
