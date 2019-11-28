@@ -56,7 +56,7 @@ namespace fluid {
           int x = (int) _map[util::at2_x(_width, i, j)];
           int y = (int) _map[util::at2_y(_width, i, j)];
 
-          dst[j][i] = src[_height - y - 1][x];
+          dst[j][i] = src[y][x];
         }
       }
     }

@@ -23,6 +23,7 @@
 // setting
 int width, height;
 float scale_x, scale_y;
+float force_radius, force_power;
 int simulation_mode = -1;
 bool save_enable = false;
 
@@ -37,9 +38,9 @@ namespace png {
   using solid_image = image<pixel, solid_pixel_buffer<pixel>>;
 }
 int src_frame_number = 0;
-std::vector<png::pixel_buffer<png::rgb_pixel>> src_buf_seq;
+std::vector<png::pixel_buffer<png::rgba_pixel>> src_buf_seq;
 std::string dst_img_dir;
-std::shared_ptr<png::solid_image<png::rgb_pixel>> dst_img_ptr;
+std::shared_ptr<png::solid_image<png::rgba_pixel>> dst_img_ptr;
 
 // mouse
 float mouse_pos[2] = {};
@@ -63,12 +64,12 @@ void mouse(int button , int state , int x , int y) {
 
 void motion(int x, int y) {
   mouse_pos[0] = (float) x;
-  mouse_pos[1] = (float) (height - y);
+  mouse_pos[1] = (float) y;
 }
 
 void passive_motion(int x, int y) {
   mouse_pos[0] = (float) x;
-  mouse_pos[1] = (float) (height - y);
+  mouse_pos[1] = (float) y;
 }
 
 void update_drag() {
@@ -100,9 +101,9 @@ void update_fluid() {
   //sim->diffuse(20);
   if (mouse_pressed) {
     // add force
-    float p[] = {scale_x * mouse_pos[0] , scale_y * mouse_pos[1] };
-    float f[] = {500     * mouse_drag[0], 500     * mouse_drag[1]};
-    timer([&]{sim->add_force(p, f, 50);}, "add_force");
+    float p[] = {scale_x * mouse_pos[0], scale_y * mouse_pos[1]};
+    float f[] = {force_power * mouse_drag[0], force_power * mouse_drag[1]};
+    timer([&]{sim->add_force(p, f, force_radius);}, "add_force");
     //sim->add_force(p, f, 100);
 
     if (simulation_mode == MAP_FLUID_MODE) {
@@ -165,7 +166,9 @@ void save_dst_img(const png::solid_image<pixel>& dst_img) {
 void rendering(const GLvoid *dst_data) {
   glClearColor(1.0, 1.0, 1.0, 10.0);
   glClear(GL_COLOR_BUFFER_BIT);
-  glDrawPixels(width, height, GL_RGB, GL_UNSIGNED_BYTE, dst_data);
+  // upside down dst image
+  glPixelZoom(1, -1); glRasterPos2f(-1, 1);
+  glDrawPixels(width, height, GL_RGBA, GL_UNSIGNED_BYTE, dst_data);
   glFlush();
 }
 
@@ -193,6 +196,7 @@ void display() {
   glutPostRedisplay();
 }
 
+template<typename pixel>
 void load_png_seq(std::string prefix) {
   namespace fs = std::filesystem;
 
@@ -216,7 +220,7 @@ void load_png_seq(std::string prefix) {
     std::string filename = iter->path().string();
 
     if (std::regex_match(filename, seq_file)) {
-      png::image<png::rgb_pixel> src_img(filename);
+      png::image<pixel> src_img(filename);
       src_buf_seq.push_back(src_img.get_pixbuf());
 
       std::cout << "[info] load: " << filename << std::endl;
@@ -229,13 +233,15 @@ int main(int argc, char *argv[]) {
 
   options_description opt("Option");
   opt.add_options()
-    ("help,H", "Print help message")
+    ("help,h", "Print help message")
     ("save,s", "Save destination image")
     ("sequence", "Use png sequence file for source image")
     ("src_img", value<std::string>()->default_value("image"), "Source image")
     ("dst_img", value<std::string>()->default_value("image"), "Destination image")
     ("scale_x", value<float>()->default_value(0.5f), "Field x scale")
     ("scale_y", value<float>()->default_value(0.5f), "Field y scale")
+    ("force_radius", value<float>()->default_value(25), "Mouse force radius")
+    ("force_power", value<float>()->default_value(500), "Mouse force power")
     ("mode,m", value<std::string>()->default_value("Map"), "Simulation mode")
     ("init_from_src", "Init ink from source image (Only Ink Fluid)")
     ("noise_amp", value<float>()->default_value(10), "Perlin noise amplitude")
@@ -269,7 +275,7 @@ int main(int argc, char *argv[]) {
     std::string src_img_prefix = map["src_img"].as<std::string>();
     if (map.count("sequence")) {
       // load source image sequence
-      load_png_seq(src_img_prefix);
+      load_png_seq<png::rgba_pixel>(src_img_prefix);
       if (src_buf_seq.empty()) {
         std::cout << "[error] source image sequence was not exist." << std::endl;
 
@@ -278,7 +284,7 @@ int main(int argc, char *argv[]) {
     } else {
       // load source image
       std::string filename = src_img_prefix + ".png";
-      png::image<png::rgb_pixel> src_img(filename);
+      png::image<png::rgba_pixel> src_img(filename);
       src_buf_seq.push_back(src_img.get_pixbuf());
 
       std::cout << "[info] load: " << filename << std::endl;
@@ -296,6 +302,10 @@ int main(int argc, char *argv[]) {
     float dt = map["delta_t"].as<float>();
     float dx = map["delta_x"].as<float>();
     float viscosity = map["viscosity"].as<float>();
+
+    // mouse force setting
+    force_radius = map["force_radius"].as<float>();
+    force_power = map["force_power"].as<float>();
 
     // select simulation mode
     auto mode_name = map["mode"].as<std::string>();
@@ -329,7 +339,7 @@ int main(int argc, char *argv[]) {
     fluid::util::timer([&]{fluid::Fluid::accelerate_by_single_vector(*sim, vel);}, "accelerate by single vector");
 
     // init destination image
-    dst_img_ptr = std::make_shared<png::solid_image<png::rgb_pixel>>(width, height);
+    dst_img_ptr = std::make_shared<png::solid_image<png::rgba_pixel>>(width, height);
     if (save_enable) {
       namespace fs = std::filesystem;
 
