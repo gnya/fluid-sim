@@ -95,16 +95,16 @@ void key(unsigned char key, int x, int y) {
 void update_fluid() {
   using namespace fluid::util;
 
-  timer([]{sim->advect_velocity();}, "advect_velocity", 1, false);
-  //sim->advect_velocity();
-  timer([]{sim->diffuse(20);}, "diffuse", 1, false);
-  //sim->diffuse(20);
+  //timer([]{sim->advect_velocity();}, "advect_velocity");
+  sim->advect_velocity();
+  //timer([]{sim->diffuse(20);}, "diffuse");
+  sim->diffuse(20);
   if (mouse_pressed) {
     // add force
     float p[] = {scale_x * mouse_pos[0], scale_y * mouse_pos[1]};
     float f[] = {force_power * mouse_drag[0], force_power * mouse_drag[1]};
-    timer([&]{sim->add_force(p, f, force_radius);}, "add_force");
-    //sim->add_force(p, f, 100);
+    //timer([&]{sim->add_force(p, f, force_radius);}, "add_force");
+    sim->add_force(p, f, 100);
 
     if (simulation_mode == MAP_FLUID_MODE) {
       // nothing to do
@@ -112,20 +112,20 @@ void update_fluid() {
       // draw point
       float pos[] = {mouse_pos[0], mouse_pos[1]};
       if (mouse_button == GLUT_LEFT_BUTTON) {
-        float color[] = {255.0f * 5.0f, 255.0f * 0};
-        timer([&]{ink_sim()->add_ink(pos, color, 100);}, "add_ink");
-        //ink_sim()->add_ink(pos, color, 100);
+        float color[] = {255.0f * 5.0f, 0, 0, 255.0f * 5.0f};
+        //timer([&]{ink_sim()->add_ink(pos, color, 100);}, "add_ink");
+        ink_sim()->add_ink(pos, color, 100);
       } else if (mouse_button == GLUT_RIGHT_BUTTON) {
-        float color[] = {255.0f * 0, 255.0f * 0.01f};
-        timer([&]{ink_sim()->add_ink_src(pos, color, 100);}, "add_ink_src");
-        //ink_sim()->add_ink(pos, color, 100);
+        float color[] = {0, 255.0f * 0.01f, 0, 255.0f * 5.0f};
+        //timer([&]{ink_sim()->add_ink_src(pos, color, 100);}, "add_ink_src");
+        ink_sim()->add_ink_src(pos, color, 100);
       }
     }
   }
-  timer([]{sim->projection(40);}, "projection", 1, false);
-  //sim->projection(40);
-  timer([]{sim->boundary();}, "boundary", 1, false);
-  //sim->boundary();
+  //timer([]{sim->projection(40);}, "projection");
+  sim->projection(40);
+  //timer([]{sim->boundary();}, "boundary");
+  sim->boundary();
 
   if (simulation_mode == MAP_FLUID_MODE) {
     timer([]{map_sim()->advect_map();}, "advect_map", 1, false);
@@ -175,24 +175,22 @@ void rendering(const GLvoid *dst_data) {
 void display() {
   using namespace fluid::util;
 
-  std::cout << "[info] calc fluid" << std::endl;
+  //std::cout << "[info] calc fluid" << std::endl;
 
   // update phase
   update_drag();
-  fluid::util::timer([]{update_fluid();}, "AMOUNT OF FLUID SIM");
+  fluid::util::timer([]{update_fluid();}, "AMOUNT OF FLUID SIM", 1, false);
   //update_fluid();
 
-  std::cout << "[info] draw phase" << std::endl;
+  //std::cout << "[info] draw phase" << std::endl;
 
   // init dst img
   timer([]{get_dst_buf(dst_img_ptr->get_pixbuf());}, "AMOUNT OF GET DST IMG", 1, false);
-  //get_dst_buf(dst_img.get_pixbuf());
-  timer([]{if (save_enable) save_dst_img(*dst_img_ptr);}, "AMOUNT OF SAVING", 1, false);
-  //if (save_enable) save_dst_img(dst_img);
+  //get_dst_buf(dst_img_ptr->get_pixbuf());
+  if (save_enable) save_dst_img(*dst_img_ptr);
 
   // rendering
-  timer([]{rendering(dst_img_ptr->get_pixbuf().get_bytes().data());}, "AMOUNT OF RENDERING", 1, false);
-  //rendering(dst_img.get_pixbuf().get_bytes().data());
+  rendering(dst_img_ptr->get_pixbuf().get_bytes().data());
   glutPostRedisplay();
 }
 
@@ -332,11 +330,11 @@ int main(int argc, char *argv[]) {
     }
 
     // set perlin noise amplitude
-    fluid::util::timer([&]{fluid::Fluid::accelerate_by_perlin_noise(*sim, 0, 1, map["noise_amp"].as<float>());}, "accelerate by perlin noise");
+    fluid::Fluid::accelerate_by_perlin_noise(*sim, 0, 1, map["noise_amp"].as<float>());
 
     // set fluid velocity
     float vel[] = {map["vel_x"].as<float>(), map["vel_y"].as<float>()};
-    fluid::util::timer([&]{fluid::Fluid::accelerate_by_single_vector(*sim, vel);}, "accelerate by single vector");
+    fluid::Fluid::accelerate_by_single_vector(*sim, vel);
 
     // init destination image
     dst_img_ptr = std::make_shared<png::solid_image<png::rgba_pixel>>(width, height);

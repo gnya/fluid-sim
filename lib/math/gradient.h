@@ -18,7 +18,7 @@ namespace fluid::math {
     __m128 p_y1 = _mm_loadu_ps(p - m); // p[i, j - 1]
     p_x0 = _mm_mul_ps(_mm_sub_ps(p_x0, p_x1), dx_half);
     p_y0 = _mm_mul_ps(_mm_sub_ps(p_y0, p_y1), dx_half);
-    __m256 p_term = marge_m256_2f(p_x0, p_y0);
+    __m256 p_term = marge_m128_2f(p_x0, p_y0);
 
     _mm256_storeu_ps(u, _mm256_sub_ps(w_term, p_term));
   }

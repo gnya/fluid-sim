@@ -25,8 +25,8 @@ namespace fluid {
       _width = width;
       _height = height;
 
-      _map     = new (std::align_val_t{32}) float[width * height * 2];
-      _map_tmp = new (std::align_val_t{32}) float[width * height * 2];
+      _map     = new (std::align_val_t{32}) float[width * height * 2]();
+      _map_tmp = new (std::align_val_t{32}) float[width * height * 2]();
 
       // reset map
       for (int j = 0; j < _height; j++) {

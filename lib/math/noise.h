@@ -259,7 +259,7 @@ namespace fluid::math::noise {
         __m128 x = _mm_mul_ps(_mm_add_ps(_i, _idx), _scale);
         __m128 y = _mm_mul_ps(_j, _scale);
 
-        __m256 noise = util::avx::marge_m256_2f(x_noise(x, y), y_noise(x, y));
+        __m256 noise = util::avx::marge_m128_2f(x_noise(x, y), y_noise(x, y));
         __m256 a = _mm256_mul_ps(_mm256_sub_ps(_mm256_mul_ps(noise, _two), _one), _amp);
 
         __m256 tmp = _mm256_loadu_ps(&u[at2_x(m, i, j)]);
@@ -272,7 +272,7 @@ namespace fluid::math::noise {
         __m128 x = _mm_mul_ps(_mm_add_ps(_i, _idx), _scale);
         __m128 y = _mm_mul_ps(_j, _scale);
 
-        __m256 noise = util::avx::marge_m256_2f(x_noise(x, y), y_noise(x, y));
+        __m256 noise = util::avx::marge_m128_2f(x_noise(x, y), y_noise(x, y));
         __m256 a = _mm256_mul_ps(_mm256_sub_ps(_mm256_mul_ps(noise, _two), _one), _amp);
 
         __attribute__((aligned(32))) float _a[8] = {0};

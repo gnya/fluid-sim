@@ -27,9 +27,9 @@ namespace fluid {
       _width = width;
       _height = height;
 
-      _ink     = new (std::align_val_t{32}) float[width * height * 2];
-      _ink_tmp = new (std::align_val_t{32}) float[width * height * 2];
-      _ink_src = new (std::align_val_t{32}) float[width * height * 2];
+      _ink     = new (std::align_val_t{32}) float[width * height * 4]();
+      _ink_tmp = new (std::align_val_t{32}) float[width * height * 4]();
+      _ink_src = new (std::align_val_t{32}) float[width * height * 4]();
     }
 
     ~InkFluid() override {
@@ -40,40 +40,58 @@ namespace fluid {
     }
 
     void advect_ink() {
-      math::advect_scaled2f(_ink, _u, _ink_tmp, _dt, _dx, _width, _height, _m, _n);
-      math::add2f(_ink_tmp, _ink_src, _ink, _width, _height, 0, 255);
+      math::advect_scaled4f(_ink, _u, _ink_tmp, _dt, _dx, _width, _height, _m, _n);
+      math::add4f(_ink_tmp, _ink_src, _ink, _width, _height, 0, 255);
     }
 
-    void add_ink(float pos[2], float c[2], float r) {
-      math::brush2f(_ink, pos, c, r, _dt, _width, _height);
+    void add_ink(float pos[2], float c[4], float r) {
+      math::brush4f(_ink, pos, c, r, _dt, _width, _height);
     }
 
-    void add_ink_src(float pos[2], float c[2], float r) {
-      math::brush2f(_ink_src, pos, c, r, _dt, _width, _height);
+    void add_ink_src(float pos[2], float c[4], float r) {
+      math::brush4f(_ink_src, pos, c, r, _dt, _width, _height);
     }
 
     template<typename pixel>
-    void set_ink(const png::pixel_buffer<pixel> &src) {
-      for (int j = 0; j < _height; j++) {
-        for (int i = 0; i < _width; i++) {
-          _ink[util::at2_x(_width, i, j)] = src[j][i].red;
-          _ink[util::at2_y(_width, i, j)] = src[j][i].green;
-        }
-      }
-    }
+    void set_ink(const png::pixel_buffer<pixel> &src);
 
     template<typename pixel>
     void get_ink(png::solid_pixel_buffer<pixel> &dst);
   };
 
+  template<>
+  void InkFluid::set_ink(const png::pixel_buffer<png::rgb_pixel> &src) {
+    for (int j = 0; j < _height; j++) {
+      for (int i = 0; i < _width; i++) {
+        _ink[util::at(4, _width, 0, i, j)] = src[j][i].red;
+        _ink[util::at(4, _width, 1, i, j)] = src[j][i].green;
+        _ink[util::at(4, _width, 2, i, j)] = src[j][i].blue;
+        _ink[util::at(4, _width, 3, i, j)] = 255;
+      }
+    }
+  }
+
+  template<>
+  void InkFluid::set_ink(const png::pixel_buffer<png::rgba_pixel> &src) {
+    for (int j = 0; j < _height; j++) {
+      for (int i = 0; i < _width; i++) {
+        _ink[util::at(4, _width, 0, i, j)] = src[j][i].red;
+        _ink[util::at(4, _width, 1, i, j)] = src[j][i].green;
+        _ink[util::at(4, _width, 2, i, j)] = src[j][i].blue;
+        _ink[util::at(4, _width, 3, i, j)] = src[j][i].alpha;
+      }
+    }
+  }
+
   template <>
   void InkFluid::get_ink(png::solid_pixel_buffer<png::rgb_pixel> &dst) {
     for (int j = 0; j < _height; j++) {
       for (int i = 0; i < _width; i++) {
-        int x = (int) _ink[util::at2_x(_width, i, j)];
-        int y = (int) _ink[util::at2_y(_width, i, j)];
+        int x = (int) _ink[util::at(4, _width, 0, i, j)];
+        int y = (int) _ink[util::at(4, _width, 1, i, j)];
+        int z = (int) _ink[util::at(4, _width, 2, i, j)];
 
-        dst[j][i] = png::rgb_pixel(x, y, 0);
+        dst[j][i] = png::rgb_pixel(x, y, z);
       }
     }
   }
@@ -82,10 +100,12 @@ namespace fluid {
   void InkFluid::get_ink(png::solid_pixel_buffer<png::rgba_pixel> &dst) {
     for (int j = 0; j < _height; j++) {
       for (int i = 0; i < _width; i++) {
-        int x = (int) _ink[util::at2_x(_width, i, j)];
-        int y = (int) _ink[util::at2_y(_width, i, j)];
+        int x = (int) _ink[util::at(4, _width, 0, i, j)];
+        int y = (int) _ink[util::at(4, _width, 1, i, j)];
+        int z = (int) _ink[util::at(4, _width, 2, i, j)];
+        int w = (int) _ink[util::at(4, _width, 3, i, j)];
 
-        dst[j][i] = png::rgba_pixel(x, y, 0, 255);
+        dst[j][i] = png::rgba_pixel(x, y, z, w);
       }
     }
   }

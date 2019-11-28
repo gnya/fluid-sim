@@ -32,12 +32,12 @@ namespace fluid {
       _dx = dx;
       _v  = v;
 
-      _u     = new (std::align_val_t{32}) float[m * n * 2];
-      _w     = new (std::align_val_t{32}) float[m * n * 2];
-      _w_tmp = new (std::align_val_t{32}) float[m * n * 2];
-      _w_div = new (std::align_val_t{32}) float[m * n * 1];
-      _p     = new (std::align_val_t{32}) float[m * n * 1];
-      _p_tmp = new (std::align_val_t{32}) float[m * n * 1];
+      _u     = new (std::align_val_t{32}) float[m * n * 2]();
+      _w     = new (std::align_val_t{32}) float[m * n * 2]();
+      _w_tmp = new (std::align_val_t{32}) float[m * n * 2]();
+      _w_div = new (std::align_val_t{32}) float[m * n * 1]();
+      _p     = new (std::align_val_t{32}) float[m * n * 1]();
+      _p_tmp = new (std::align_val_t{32}) float[m * n * 1]();
     }
 
     virtual ~Fluid() {
